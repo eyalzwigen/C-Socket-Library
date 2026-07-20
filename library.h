@@ -1,0 +1,6 @@
+#ifndef C_SOCKET_LIBRARY_LIBRARY_H
+#define C_SOCKET_LIBRARY_LIBRARY_H
+
+void hello(void);
+
+#endif // C_SOCKET_LIBRARY_LIBRARY_H

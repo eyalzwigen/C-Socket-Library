@@ -1,0 +1,34 @@
+# Clion project files
+.idea/
+cmake-build-*/
+
+# Cmake generated files
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+Testing/
+Makefile
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+CTestTestfile.cmake
+_deps/
+CMakeUserPresets.json
+
+# Build outputs (if not using cmake-build-*)
+*.o
+*.so
+*.so.*
+*.dll
+*.dylib
+*.a
+*.lib
+*.exe
+*.out
+*.app
+
+# Temporary and backup files
+*~
+*.swp
+*.swo
+*~
