@@ -64,7 +64,7 @@ Socket *sock_init(const SockInfo sockinfo) {
 
             if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
                 fprintf(stderr, "WSAStartup failed.\n");
-                return 1;
+                return NULL;
             }
 
             if (LOBYTE(wsaData.wVersion) != 2 ||
@@ -73,7 +73,7 @@ Socket *sock_init(const SockInfo sockinfo) {
                 fprintf(stderr,"Version 2.2 of Winsock not available.\n");
                 if ()
                     WSACleanup();
-                return 2;
+                return NULL;
             }
         }
     #endif
