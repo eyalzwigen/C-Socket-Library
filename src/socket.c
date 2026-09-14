@@ -21,6 +21,33 @@
 #include <stdio.h>
 #include <string.h>
 
+#define WSA_STARTUP_FAILED "WSAStartup failed.\n"
+#define WINSOCK_MISSING "Version 2.2 of Winsock not available.\n"
+#define CANT_ALLOCATE_FOR_SOCKET "Could not allocate memory for new socket.\n"
+#define CANT_CREATE_SOCKET "Could not create socket: \n"
+#define CANT_BIND_SOCKET "Could not bind socket: \n"
+#define CANT_ALLOCATE_SOCKADDR "Could not allocate memory for _sockaddr in new socket.\n"
+#define CANT_ALLOCATE_BYTES "Could not allocate memory for a new Bytes variable.\n"
+
+typedef struct {
+    SockErrCode code;
+    char *message;
+    char *file;
+    int line;
+} SockError;
+
+static _Thread_local SockError SOCK_ERROR = {};
+
+#define SET_SOCK_ERROR(error_code, error_message) \
+    do {                                          \
+        SOCK_ERROR.code = (error_code);           \
+        SOCK_ERROR.message = (error_message);     \
+        SOCK_ERROR.file = __FILE__;               \
+        SOCK_ERROR.line = __LINE__;               \
+    } while (0)
+
+
+
 struct Socket {
     SockInfo sockinfo;
     int sockfd;
@@ -35,8 +62,8 @@ struct Socket {
  * @return A bytes object on success. On failure, returns:
  *                   { .buffer = NULL, .length = 0 }.
  */
-static Bytes recv_exact(Socket *sock, size_t max_bytes);
 
+int recv_exact(Socket *sock, Bytes *buffer, int max_bytes);
 
 static int sock_cnt = 0;
 
@@ -63,14 +90,14 @@ Socket *sock_init(const SockInfo sockinfo) {
             WSADATA wsaData;
 
             if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
-                fprintf(stderr, "WSAStartup failed.\n");
+                SET_SOCK_ERROR(WSA_STARTUP, WSA_STARTUP_FAILED);
                 return NULL;
             }
 
             if (LOBYTE(wsaData.wVersion) != 2 ||
                 HIBYTE(wsaData.wVersion) != 2)
             {
-                fprintf(stderr,"Version 2.2 of Winsock not available.\n");
+                SET_SOCK_ERROR(WINSOCK_STARTUP, WINSOCK_MISSING);
                 if ()
                     WSACleanup();
                 return NULL;
@@ -85,7 +112,7 @@ Socket *sock_init(const SockInfo sockinfo) {
 
     Socket *sock = calloc(1, sizeof(Socket));
     if (sock == NULL) {
-        // Add an error to a custom error tracker (sock_error(), etc...)
+        SET_SOCK_ERROR(MEMORY_ALLOCATION, CANT_ALLOCATE_FOR_SOCKET);
         return NULL;
     }
     sock->_sockaddr = NULL;
@@ -95,7 +122,7 @@ Socket *sock_init(const SockInfo sockinfo) {
     hints.ai_socktype = sockinfo.socktype; // A TCP Stream socket
 
     if ((status = getaddrinfo(sockinfo.host, sockinfo.service, &hints, &servinfo)) != 0) {
-        fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(status)); // If there was an error, print it to the stderr pipe
+        SET_SOCK_ERROR(GETADDRINFO, (char *) gai_strerror(status));
         return NULL;
     }
 
@@ -109,11 +136,11 @@ Socket *sock_init(const SockInfo sockinfo) {
     }
 
     if (sock->sockfd == -1) {
-        fprintf (stderr, "Could not create a socket.\nError from the latest system call:\n%s\n", strerror(errno));
+        SET_SOCK_ERROR(SOCK_INIT, strcat(CANT_CREATE_SOCKET, strerror(errno)));
         return NULL;
     }
     else if (status == -1) {
-        fprintf(stderr, "Could not bind the created socket.\nError from the latest system call: %s\n", strerror(errno));
+        SET_SOCK_ERROR(SOCK_INIT, strcat(CANT_BIND_SOCKET, strerror(errno)));
         return NULL;
     }
 
@@ -126,7 +153,7 @@ Socket *sock_init(const SockInfo sockinfo) {
 int sock_connect(const Socket *sock) {
     const int status = connect(sock->sockfd, (struct sockaddr *) sock->_sockaddr, sizeof(struct sockaddr_storage));
     if (status < 0) {
-        fprintf(stderr, "Could not connect to the socket.\nError: %s\n", strerror(errno));
+        SET_SOCK_ERROR(SOCK_CONN, strerror(errno));
         return 1;
     }
     return 0;
@@ -135,7 +162,7 @@ int sock_connect(const Socket *sock) {
 int sock_listen(const Socket *sock, int backlog) {
     const int status = listen(sock->sockfd, backlog);
     if (status < 0) {
-        fprintf(stderr, "Could not listen on socket.\nError: %s\n", strerror(errno));
+        SET_SOCK_ERROR(SOCK_LISTEN, strerror(errno));
         return 1;
     }
 
@@ -145,26 +172,26 @@ int sock_listen(const Socket *sock, int backlog) {
 Socket *sock_accept(const Socket *sock) {
     Socket *new_sock = calloc(1, sizeof(Socket));
     if (new_sock == NULL) {
-        fprintf(stderr, "Could not allocate memory for new socket.\n");
+        SET_SOCK_ERROR(MEMORY_ALLOCATION, CANT_ALLOCATE_FOR_SOCKET);
         return NULL;
     }
     new_sock->_sockaddr = calloc(1, sizeof(struct sockaddr_storage));
     if (new_sock->_sockaddr == NULL) {
-        fprintf(stderr, "Could not allocate memory for _sockaddr in new socket.\n");
+        SET_SOCK_ERROR(MEMORY_ALLOCATION, CANT_ALLOCATE_SOCKADDR);
         return NULL;
     }
 
     socklen_t addr_len = sizeof *new_sock->_sockaddr;
     new_sock->sockfd = accept(sock->sockfd, (struct sockaddr *) new_sock->_sockaddr, &addr_len);
     if (new_sock->sockfd < 0) {
-        fprintf(stderr, "Could not accept new socket.\nError: %s\n", strerror(errno));
+        SET_SOCK_ERROR(SOCK_ACCEPT, strerror(errno));
         return NULL;
     }
 
     return new_sock;
 }
 
-int sock_sendall(const Socket *sock, Bytes data) {
+int sock_sendall(const Socket *sock, Bytes *data) {
     uint32_t buffer_len = htonl(sizeof data.buffer);
 
     unsigned char *full_buffer = calloc(sizeof buffer_len + sizeof data, 1);
@@ -176,7 +203,7 @@ int sock_sendall(const Socket *sock, Bytes data) {
         int bytes_sent = send(sock->sockfd, full_buffer, sizeof bytes_left, 0);
 
         if (bytes_sent < 0) {
-            fprintf(stderr, "Could not send data to socket.\nError: %s\n", strerror(errno));
+            SET_SOCK_ERROR(SOCK_SEND, strerror(errno));
             return 1;
         }
 
@@ -184,7 +211,7 @@ int sock_sendall(const Socket *sock, Bytes data) {
     }
 }
 
-int recv_exact(Socket *sock, Bytes buffer, int max_bytes) {
+int recv_exact(Socket *sock, Bytes *buffer, int max_bytes) {
 
 }
 
@@ -204,3 +231,20 @@ void print_ip(struct sockaddr_storage *addr) {
     }
 }
 
+Bytes *bytes(const void *data, const size_t length) {
+    Bytes *bytes = calloc(1, sizeof(Bytes));
+    if (bytes == NULL) {
+    SET_SOCK_ERROR(MEMORY_ALLOCATION, CANT_ALLOCATE_BYTES);
+        return NULL;
+    }
+
+    bytes->data = (unsigned char *) data;
+    bytes->length = length;
+
+}
+
+void free_bytes(Bytes *bytes) {
+    free(bytes->data);
+    bytes->data = NULL;
+    free(bytes);
+}

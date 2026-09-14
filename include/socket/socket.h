@@ -3,12 +3,25 @@
 
 #include <netdb.h>
 
-typedef struct Bytes {
+typedef enum {
+    WSA_STARTUP = 1,
+    WINSOCK_STARTUP,
+    GETADDRINFO,
+    SOCK_INIT,
+    SOCK_CONN,
+    SOCK_LISTEN,
+    SOCK_ACCEPT,
+    SOCK_SEND,
+    SOCK_RECV,
+    MEMORY_ALLOCATION
+} SockErrCode;
+
+typedef struct {
     unsigned char *data;
     size_t length;
 } Bytes;
 
-typedef struct SockInfo {
+typedef struct {
     const char *host;
     const char *service;
     int socktype;
@@ -16,10 +29,11 @@ typedef struct SockInfo {
 
 typedef struct Socket Socket;
 
+
 /** Sockets **/
 
-/**
- * Enumerates all addrinfo items and initializes a
+/*
+  Enumerates all addrinfo items and initializes a
  * socket with the first valid set of values
  *
  * @param sockinfo - Contains the host, port, and type of the socket
@@ -76,7 +90,7 @@ void print_ip(struct sockaddr_storage *addr);
  * @param data - The data to send
  * @return 0 if no errors, else 1
  */
-int sock_sendall(const Socket *sock, Bytes data);
+int sock_sendall(const Socket *sock, Bytes *data);
 
 
 /**
@@ -86,17 +100,31 @@ int sock_sendall(const Socket *sock, Bytes data);
  * @return A bytes object on success. On failure, returns:
  *                   { .buffer = NULL, .length = 0 }.
  */
-Bytes sock_recv(Socket *sock);
+Bytes *sock_recv(Socket *sock);
 
 //-------------------------------------------------------------------
 
 /** Helpers **/
 
 /**
+ * Turn a value into an Byte struct
+ *
+ * @param data - The pointer to the data
+ * @param length - The size of the data
+ * @returns
+ */
+Bytes *bytes(const void *data, size_t length);
+
+/**
  * Free a bytearray
  *
- *@param bytes - The bytes to free
+ * @param bytes - The pointer to the bytes to free
  */
-void free_bytes(Bytes bytes);
-
+void free_bytes(Bytes *bytes);
 #endif //SOCKET_TYPES_H
+
+//-------------------------------------------------------------------
+
+/** Error Tracking **/
+
+char *sock_error();
