@@ -40,6 +40,7 @@
 #define ENCODE_ERR "An error with encoding data"
 #define ENCODE_NULL "Cannot serialize NULL pointer"
 #define CANT_CONNECT_DGRAM_SOCKET "Cannot \"connect\" a datagram socket"
+#define SOCK_TYPE_NOT_SUPPORTED "This type of socket is not yet supported by this library."
 
 static _Thread_local SockError SOCK_ERROR = {};
 
@@ -147,6 +148,23 @@ typedef struct Socket {
     struct addrinfo *_info_list; //! Extra Private!!!!
 } Socket;
 
+static const int SUPPORTED_SOCKET_TYPES[] = {SOCK_STREAM};
+
+/**
+ * Checks whether a socket type is compatible with the library
+ *
+ * @param type - The type of the socket
+ * @return 1 if yes, 0 if not
+ */
+static int isSupported(const int type) {
+    const int len = sizeof SUPPORTED_SOCKET_TYPES / sizeof SUPPORTED_SOCKET_TYPES[0];
+    for (int i = 0; i < len; i++) {
+        if (type == SUPPORTED_SOCKET_TYPES[i]) return 1;
+    }
+
+    return 0;
+}
+
 /**
  * Receives an exact amount of bytes from a socket
  *
@@ -186,6 +204,11 @@ void sock_close(Socket *sock) {
 }
 
 Socket *sock_new(const SockInfo sockinfo) {
+    if (!isSupported(sockinfo.socktype)) {
+        SET_SOCK_ERROR(SOCK_CREATE, SOCK_TYPE_NOT_SUPPORTED);
+        return NULL;
+    }
+
     #ifdef _WIN32
         if (sock_cnt == 0) {
             WSADATA wsaData;
@@ -357,9 +380,6 @@ int sock_sendall(const Socket *sock, Bytes *data) {
     while (full_data.length > 0) {
         ssize_t bytes_sent = 0;
         switch (sock->socktype) {
-            case SOCK_DGRAM:
-                 bytes_sent = sendto(sock->sockfd, full_data.buffer, full_data.length, 0, (struct sockaddr *) sock->_sockaddr, sizeof(struct sockaddr_storage));
-                break;
             case SOCK_STREAM:
                 bytes_sent = send(sock->sockfd, full_data.buffer, full_data.length, 0);
                 break;
@@ -389,7 +409,27 @@ int sock_sendall(const Socket *sock, Bytes *data) {
 }
 
 static int recv_exact(Socket *sock, Bytes *dest, size_t max_bytes) {
+    if (dest->buffer != NULL) {
+        free(dest->buffer);
+        dest->buffer = NULL;
+        dest->length = 0;
+    }
 
+    unsigned char *buffer = calloc(1, max_bytes);
+    if (buffer == NULL) {
+        SET_SOCK_ERROR(MEMORY_ALLOCATION, CANT_ALLOCATE_MEMORY);
+    }
+
+    size_t bytes_left = max_bytes;
+    while (bytes_left < max_bytes) {
+        ssize_t bytes_received = 0;
+        switch (sock->socktype) {
+            case SOCK_STREAM:
+                bytes_received = recv(sock->sockfd, buffer, max_bytes, 0);
+                break;
+
+        }
+    }
 
     return 0;
 }
