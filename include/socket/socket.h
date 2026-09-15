@@ -107,7 +107,7 @@ void print_ip(struct sockaddr_storage *addr);
  * @param data - The data to send
  * @return 0 if all data was sent, -1 if there were errors, and 1 if the socket closed the connection
  */
-int sock_sendall(const Socket *sock, Bytes *data);
+int sock_sendall(const Socket *sock, const Bytes *data);
 
 
 /**
@@ -117,7 +117,7 @@ int sock_sendall(const Socket *sock, Bytes *data);
  * @param dest - The destination Bytes object to put the data in
  * @return 0 if all data received, -1 if there was an error, and 1 if the socket closed the connection
  */
-int sock_recv(Socket *sock, Bytes *dest);
+int sock_recv(const Socket *sock, Bytes *dest);
 
 //-------------------------------------------------------------------
 
@@ -149,6 +149,22 @@ int remove_prefix(Bytes *bytes, size_t prefix_length);
  * @return
  */
 int remove_suffix(Bytes *bytes, size_t suffix_length);
+
+/**
+ * Extract a uint32_t from a Bytes variable
+ *
+ * @param bytes - The bytes to convert
+ * @return the value
+ */
+uint32_t bytes_to_u32(const Bytes *bytes);
+
+/**
+ * Extract an int from a Bytes variable
+ *
+ * @param bytes - The bytes to convert
+ * @return the value
+ */
+int bytes_to_int(const Bytes *bytes);
 
 /**
  * Free a bytearray

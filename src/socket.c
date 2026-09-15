@@ -148,6 +148,13 @@ typedef struct Socket {
     struct addrinfo *_info_list; //! Extra Private!!!!
 } Socket;
 
+typedef enum {
+    OK = 0,
+    ERROR = -1,
+    CONN_CLOSED = 1
+
+} SockResult;
+
 static const int SUPPORTED_SOCKET_TYPES[] = {SOCK_STREAM};
 
 /**
@@ -173,7 +180,7 @@ static int isSupported(const int type) {
  * @param max_bytes - Maximum number of bytes to receive
  * @return 0 if no errors, else 1
  */
-static int recv_exact(Socket *sock, Bytes *dest, size_t max_bytes);
+static int recv_exact(const Socket *sock, Bytes *dest, size_t max_bytes);
 
 static int sock_cnt = 0;
 
@@ -365,12 +372,14 @@ Socket *sock_accept(const Socket *sock) {
     return new_sock;
 }
 
-int sock_sendall(const Socket *sock, Bytes *data) {
+int sock_sendall(const Socket *sock, const Bytes *data) {
+    SockResult code = OK;
+
     const uint32_t buffer_len = htonl(sizeof data->buffer);
 
     unsigned char *full_buffer = calloc(sizeof buffer_len + sizeof data->buffer, 1);
     memcpy(full_buffer, &buffer_len, sizeof buffer_len);
-    memcpy(full_buffer, data->buffer, sizeof *data->buffer);
+    memcpy(full_buffer + sizeof buffer_len, data->buffer, data->length);
 
     Bytes full_data = {
         .buffer = full_buffer,
@@ -379,63 +388,125 @@ int sock_sendall(const Socket *sock, Bytes *data) {
 
     while (full_data.length > 0) {
         ssize_t bytes_sent = 0;
-        switch (sock->socktype) {
-            case SOCK_STREAM:
-                bytes_sent = send(sock->sockfd, full_data.buffer, full_data.length, 0);
-                break;
-        }
+
+        bytes_sent = send(sock->sockfd, full_data.buffer, full_data.length, 0);
 
         if (bytes_sent < 0) {
             SET_SOCK_ERROR(SOCK_SEND, strerror(errno));
             free_bytes(&full_data);
-            return -1;
+            code = ERROR;
+            break;
         }
 
         else if (bytes_sent == 0) {
             free(full_buffer);
-            return 1;
+            code = CONN_CLOSED;
+            break;
         }
 
         if (remove_prefix(&full_data, bytes_sent) == 1) {
             SET_SOCK_ERROR(SOCK_SEND, CANT_ALLOCATE_MEMORY);
             free(full_buffer);
-            return -1;
+            code = ERROR;
+            break;
         }
 
     }
 
     free(full_buffer);
-    return 0;
+    return code;
 }
 
-static int recv_exact(Socket *sock, Bytes *dest, size_t max_bytes) {
-    if (dest->buffer != NULL) {
-        free(dest->buffer);
-        dest->buffer = NULL;
-        dest->length = 0;
-    }
+static int recv_exact(const Socket *sock, Bytes *dest, const size_t max_bytes) {
+    SockResult code = 0;
 
-    unsigned char *buffer = calloc(1, max_bytes);
-    if (buffer == NULL) {
+    unsigned char *full_buffer = calloc(1, max_bytes);
+    if (full_buffer == NULL) {
         SET_SOCK_ERROR(MEMORY_ALLOCATION, CANT_ALLOCATE_MEMORY);
     }
 
     size_t bytes_left = max_bytes;
     while (bytes_left < max_bytes) {
         ssize_t bytes_received = 0;
-        switch (sock->socktype) {
-            case SOCK_STREAM:
-                bytes_received = recv(sock->sockfd, buffer, max_bytes, 0);
-                break;
-
+        unsigned char *buffer = calloc(1, max_bytes);
+        if (buffer == NULL) {
+            SET_SOCK_ERROR(MEMORY_ALLOCATION, CANT_ALLOCATE_MEMORY);
+            free(full_buffer);
+            code = ERROR;
+            break;
         }
-    }
 
-    return 0;
+        bytes_received = recv(sock->sockfd, buffer, bytes_left, 0);
+
+        // Error with receiving data
+        if (bytes_received < 0) {
+            SET_SOCK_ERROR(SOCK_RECV, strerror(errno));
+            free(buffer);
+            code = ERROR;
+            break;
+        }
+
+        // The socket closed connection
+        if (bytes_received == 0) {
+            free(buffer);
+            return code = CONN_CLOSED;
+            break;
+        }
+
+        bytes_left -= bytes_received;
+
+        // Resize the current buffer to the amount of bytes received
+        unsigned char *new_buffer = realloc(buffer, bytes_received);
+        if (new_buffer == NULL) {
+            SET_SOCK_ERROR(MEMORY_ALLOCATION, CANT_ALLOCATE_MEMORY);
+            free(full_buffer);
+            free(buffer);
+            code = ERROR;
+            break;
+        }
+        free(buffer);
+        buffer = new_buffer;
+
+        // Append the received buffer to the full buffer
+        memcpy(full_buffer + (max_bytes - bytes_left), buffer, bytes_received);
+        free(buffer);
+
+    }
+    if (code == OK) {
+        if (dest->buffer != NULL) {
+            free(dest->buffer);
+            dest->buffer = NULL;
+            dest->length = 0;
+        }
+
+        dest->buffer = full_buffer;
+        dest->length = sizeof full_buffer;
+    }
+    return code;
 }
 
-int sock_recv(Socket *sock, Bytes *dest) {
+int sock_recv(const Socket *sock, Bytes *dest) {
+    SockResult code = OK;
 
+    // First, receive the 'header' with the size of the data sent
+    Bytes header = {
+        .buffer = NULL,
+        .length = 0,
+    };
+
+    code = recv_exact(sock, &header, sizeof(uint32_t));
+    if (code != OK ) {
+        free(header.buffer);
+        return code;
+    }
+
+    const uint32_t buffer_len = bytes_to_u32(&header);
+    free(header.buffer);
+    header.buffer = NULL;
+
+    code = recv_exact(sock, dest, (size_t) buffer_len);
+
+    return code;
 }
 
 void print_ip(struct sockaddr_storage *addr) {
@@ -498,6 +569,18 @@ int remove_suffix(Bytes *bytes, const size_t suffix_length) {
     bytes->buffer = new_data;
     bytes->length -= suffix_length;
     return 0;
+}
+
+uint32_t bytes_to_u32(const Bytes *bytes) {
+    uint32_t n;
+    memcpy(&n, bytes->buffer, sizeof(uint32_t));
+    return n;
+}
+
+int bytes_to_int(const Bytes *bytes) {
+    int n;
+    memcpy(&n, bytes->buffer, sizeof(int));
+    return n;
 }
 
 void free_bytes(Bytes *bytes) {
