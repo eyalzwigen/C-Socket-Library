@@ -26,7 +26,7 @@ typedef struct {
 } SockError;
 
 typedef struct {
-    unsigned char *data;
+    unsigned char *buffer;
     size_t length;
 } Bytes;
 

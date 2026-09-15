@@ -38,7 +38,8 @@
 #define SOCK_RECV_ERR "An error occurred when tried to receive from socket"
 #define UNKNOWN_ERROR "An unknown error occurred"
 #define ENCODE_ERR "An error with encoding data"
-#define ENCODE_NULL "Can't encode "
+#define ENCODE_NULL "Cannot serialize NULL pointer"
+#define CANT_CONNECT_DGRAM_SOCKET "Cannot \"connect\" a datagram socket"
 
 static _Thread_local SockError SOCK_ERROR = {};
 
@@ -141,6 +142,7 @@ const char *str_sock_error(void) {
 
 typedef struct Socket {
     int sockfd;
+    int socktype;
     struct sockaddr_storage *_sockaddr; //! Private
     struct addrinfo *_info_list; //! Extra Private!!!!
 } Socket;
@@ -216,6 +218,7 @@ Socket *sock_new(const SockInfo sockinfo) {
     }
     sock->_sockaddr = NULL;
     sock->_info_list = NULL;
+    sock->socktype = sockinfo.socktype;
 
     memset(&hints, 0, sizeof(hints)); // Set all bytes in the hints struct to 0
     hints.ai_family = AF_UNSPEC; // Accepts both IPv4 and IPv6
@@ -292,6 +295,11 @@ int sock_bind(Socket *sock) {
 }
 
 int sock_connect(const Socket *sock) {
+    if (sock->socktype == SOCK_DGRAM) {
+        SET_SOCK_ERROR(SOCK_CONN, CANT_CONNECT_DGRAM_SOCKET);
+        return 1;
+    }
+
     const int status = connect(sock->sockfd, (struct sockaddr *) sock->_sockaddr, sizeof(struct sockaddr_storage));
     if (status < 0) {
         SET_SOCK_ERROR(SOCK_CONN, strerror(errno));
@@ -335,19 +343,31 @@ Socket *sock_accept(const Socket *sock) {
 }
 
 int sock_sendall(const Socket *sock, Bytes *data) {
-    const uint32_t buffer_len = htonl(sizeof data->data);
+    const uint32_t buffer_len = htonl(sizeof data->buffer);
 
-    unsigned char *full_buffer = calloc(sizeof buffer_len + sizeof data->data, 1);
+    unsigned char *full_buffer = calloc(sizeof buffer_len + sizeof data->buffer, 1);
     memcpy(full_buffer, &buffer_len, sizeof buffer_len);
-    memcpy(full_buffer, data->data, sizeof *data->data);
+    memcpy(full_buffer, data->buffer, sizeof *data->buffer);
 
-    size_t bytes_left = sizeof full_buffer;
-    while (bytes_left > 0) {
-        const ssize_t bytes_sent = send(sock->sockfd, full_buffer, sizeof bytes_left, 0);
+    Bytes full_data = {
+        .buffer = full_buffer,
+        .length = sizeof full_buffer,
+    };
+
+    while (full_data.length > 0) {
+        ssize_t bytes_sent = 0;
+        switch (sock->socktype) {
+            case SOCK_DGRAM:
+                 bytes_sent = sendto(sock->sockfd, full_data.buffer, full_data.length, 0, (struct sockaddr *) sock->_sockaddr, sizeof(struct sockaddr_storage));
+                break;
+            case SOCK_STREAM:
+                bytes_sent = send(sock->sockfd, full_data.buffer, full_data.length, 0);
+                break;
+        }
 
         if (bytes_sent < 0) {
             SET_SOCK_ERROR(SOCK_SEND, strerror(errno));
-            free(full_buffer);
+            free_bytes(&full_data);
             return -1;
         }
 
@@ -356,13 +376,12 @@ int sock_sendall(const Socket *sock, Bytes *data) {
             return 1;
         }
 
-        if (remove_prefix(data, bytes_sent) == 1) {
+        if (remove_prefix(&full_data, bytes_sent) == 1) {
             SET_SOCK_ERROR(SOCK_SEND, CANT_ALLOCATE_MEMORY);
             free(full_buffer);
             return -1;
         }
 
-        bytes_left -= bytes_sent;
     }
 
     free(full_buffer);
@@ -404,7 +423,7 @@ Bytes *encode(const void *data, const size_t length) {
         return NULL;
     }
 
-    bytes->data = (unsigned char *) data;
+    bytes->buffer = (unsigned char *) data;
     bytes->length = length;
     return bytes;
 }
@@ -416,11 +435,12 @@ int remove_prefix(Bytes *bytes, const size_t prefix_length) {
     }
 
     for (size_t i = 0; i < bytes->length - prefix_length; i++) {
-        new_data[i] = bytes->data[i + prefix_length];
+        new_data[i] = bytes->buffer[i + prefix_length];
     }
 
-    free(bytes->data);
-    bytes->data = new_data;
+    free(bytes->buffer);
+    bytes->buffer = new_data;
+    bytes->length -= prefix_length;
     return 0;
 }
 
@@ -431,17 +451,17 @@ int remove_suffix(Bytes *bytes, const size_t suffix_length) {
     }
 
     for (size_t i = 0; i < bytes->length - suffix_length; i++) {
-        new_data[i] = bytes->data[i];
+        new_data[i] = bytes->buffer[i];
     }
 
-    free(bytes->data);
-    bytes->data = new_data;
+    free(bytes->buffer);
+    bytes->buffer = new_data;
     bytes->length -= suffix_length;
     return 0;
 }
 
 void free_bytes(Bytes *bytes) {
-    free(bytes->data);
-    bytes->data = NULL;
+    free(bytes->buffer);
+    bytes->buffer = NULL;
     free(bytes);
 }
