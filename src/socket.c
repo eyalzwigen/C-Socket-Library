@@ -341,12 +341,17 @@ int sock_sendall(const Socket *sock, Bytes *data) {
     memcpy(full_buffer, &buffer_len, sizeof buffer_len);
     memcpy(full_buffer, data->data, sizeof *data->data);
 
-    ssize_t bytes_left = sizeof full_buffer;
+    size_t bytes_left = sizeof full_buffer;
     while (bytes_left > 0) {
         const ssize_t bytes_sent = send(sock->sockfd, full_buffer, sizeof bytes_left, 0);
 
         if (bytes_sent < 0) {
             SET_SOCK_ERROR(SOCK_SEND, strerror(errno));
+            free(full_buffer);
+            return -1;
+        }
+
+        else if (bytes_sent == 0) {
             free(full_buffer);
             return 1;
         }
@@ -354,7 +359,7 @@ int sock_sendall(const Socket *sock, Bytes *data) {
         if (remove_prefix(data, bytes_sent) == 1) {
             SET_SOCK_ERROR(SOCK_SEND, CANT_ALLOCATE_MEMORY);
             free(full_buffer);
-            return 1;
+            return -1;
         }
 
         bytes_left -= bytes_sent;
