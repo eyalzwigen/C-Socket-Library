@@ -2,15 +2,11 @@
 #include <stdlib.h>
 #include <stdint.h>
 #ifdef _WIN32
-    #define IS_WINDOWS 1
-
     #define WIN32_LEAN_AND_MEAN
-    #include <windows.h>
     #include <winsock2.h>
+    #include <windows.h>
     #include <ws2tcpip.h>
 #else
-    #define IS_WINDOWS 0
-
     #include <sys/socket.h>
     #include <unistd.h>
 #endif
@@ -21,70 +17,173 @@
 #include <stdio.h>
 #include <string.h>
 
-#define WSA_STARTUP_FAILED "WSAStartup failed.\n"
-#define WINSOCK_MISSING "Version 2.2 of Winsock not available.\n"
-#define CANT_ALLOCATE_FOR_SOCKET "Could not allocate memory for new socket.\n"
-#define CANT_CREATE_SOCKET "Could not create socket: \n"
-#define CANT_BIND_SOCKET "Could not bind socket: \n"
-#define CANT_ALLOCATE_SOCKADDR "Could not allocate memory for _sockaddr in new socket.\n"
-#define CANT_ALLOCATE_BYTES "Could not allocate memory for a new Bytes variable.\n"
+#define MAX_FILE_AND_LINE_LENGTH 256
+#define MAX_ERROR_MESSAGE_LENGTH (MAX_FILE_AND_LINE_LENGTH + 1024)
 
-typedef struct {
-    SockErrCode code;
-    char *message;
-    char *file;
-    int line;
-} SockError;
+// Error message templates
+#define WSA_STARTUP_FAILED "WSAStartup failed"
+#define WINSOCK_ERROR "An error with the Winsock startup occurred"
+#define WINSOCK_MISSING "Version 2.2 of Winsock not available"
+#define CANT_ALLOCATE_FOR_SOCKET "Could not allocate memory for new socket"
+#define CANT_CREATE_SOCKET "Could not create socket"
+#define CANT_BIND_SOCKET "Could not bind socket"
+#define CANT_ALLOCATE_SOCKADDR "Could not allocate memory for _sockaddr in new socket"
+#define CANT_ALLOCATE_BYTES "Could not allocate memory for a new Bytes variable"
+#define CANT_ALLOCATE_MEMORY "Failed allocating memory"
+#define GETADDRINFO_ERR "An error with getaddrinfo() occurred"
+#define CANT_CONNECT_SOCKET "Could not connect to socket"
+#define SOCK_LISTEN_ERR "An error occurred when tried to listen on socket"
+#define SOCK_ACCEPT_ERR "An error occurred when tried to accept a new socket"
+#define SOCK_SEND_ERR "An error occured when tried to send data to socket"
+#define SOCK_RECV_ERR "An error occurred when tried to receive from socket"
+#define UNKNOWN_ERROR "An unknown error occurred"
+#define ENCODE_ERR "An error with encoding data"
+#define ENCODE_NULL "Can't encode "
 
 static _Thread_local SockError SOCK_ERROR = {};
 
-#define SET_SOCK_ERROR(error_code, error_message) \
-    do {                                          \
-        SOCK_ERROR.code = (error_code);           \
-        SOCK_ERROR.message = (error_message);     \
-        SOCK_ERROR.file = __FILE__;               \
-        SOCK_ERROR.line = __LINE__;               \
+#define SET_SOCK_ERROR(error_code, error_message)                           \
+    do {                                                                    \
+        SOCK_ERROR.code = (error_code);                                     \
+                                                                            \
+        if (SOCK_ERROR.message != NULL) free(SOCK_ERROR.message);           \
+        char *new_message = calloc(strlen(error_message), sizeof(char));    \
+        if (new_message == NULL) SOCK_ERROR.message = NULL;                 \
+        else {                                                              \
+            strcpy(new_message, error_message);                             \
+            SOCK_ERROR.message = new_message;                               \
+        }                                                                   \
+                                                                            \
+        SOCK_ERROR.file = __FILE__;                                         \
+        SOCK_ERROR.line = __LINE__;                                         \
     } while (0)
 
+/**
+ * Turns a SockErrCode into an appropriate start for an error message
+ *
+ * @param code - The error code
+ * @return a string with the appropriate start of the error message
+ */
+const static char *mapErrorCodeToMessage(const SockErrCode code) {
+    switch (code) {
+        case WSA_STARTUP:
+            return WSA_STARTUP_FAILED;
+            break;
+        case WINSOCK_STARTUP:
+            return WINSOCK_ERROR;
+            break;
+        case GETADDRINFO:
+            return GETADDRINFO_ERR;
+            break;
+        case SOCK_CREATE:
+            return CANT_CREATE_SOCKET;
+            break;
+        case SOCK_BIND:
+            return CANT_BIND_SOCKET;
+            break;
+        case SOCK_CONN:
+            return CANT_CONNECT_SOCKET;
+            break;
+        case SOCK_LISTEN:
+            return SOCK_LISTEN_ERR;
+            break;
+        case SOCK_ACCEPT:
+            return SOCK_ACCEPT_ERR;
+            break;
+        case SOCK_SEND:
+            return SOCK_SEND_ERR;
+            break;
+        case SOCK_RECV:
+            return SOCK_RECV_ERR;
+            break;
+        case MEMORY_ALLOCATION:
+            return CANT_ALLOCATE_MEMORY;
+            break;
+        default:
+            return UNKNOWN_ERROR;
+            break;
+    }
+}
 
+/**
+ * Makes a file and line message for an error
+ *
+ * @param file - The file's name
+ * @param line -line number
+ * @return the file and line message
+ */
+const static char *turnFileAndLineToMessage(const char *file, const int line) {
+    // Thread-local static buffer: exists for the thread lifetime, no free() needed
+    static _Thread_local char buf[MAX_FILE_AND_LINE_LENGTH];
 
-struct Socket {
-    SockInfo sockinfo;
+    // Formats the values into the buffer safely
+    snprintf(buf, sizeof(buf), "in %s at line %d", file, line);
+
+    return buf;
+}
+
+SockError sock_error(void) {
+    return SOCK_ERROR;
+}
+
+const char *str_sock_error(void) {
+    const char *start = mapErrorCodeToMessage(SOCK_ERROR.code);
+    const char *fileAndLine = turnFileAndLineToMessage(SOCK_ERROR.file, SOCK_ERROR.line);
+
+    static _Thread_local char full_message[MAX_ERROR_MESSAGE_LENGTH];
+
+    snprintf(full_message, sizeof(full_message), "%s %s.\n %s", start, fileAndLine, SOCK_ERROR.message);
+
+    free((void *) start);
+    free((void *) fileAndLine);
+    return full_message;
+}
+
+typedef struct Socket {
     int sockfd;
     struct sockaddr_storage *_sockaddr; //! Private
-};
+    struct addrinfo *_info_list; //! Extra Private!!!!
+} Socket;
 
 /**
  * Receives an exact amount of bytes from a socket
  *
  * @param sock - A pointer to the socket to receive from
+ * @param dest - A pointer to the Bytes variable to put the data in
  * @param max_bytes - Maximum number of bytes to receive
- * @return A bytes object on success. On failure, returns:
- *                   { .buffer = NULL, .length = 0 }.
+ * @return 0 if no errors, else 1
  */
-
-int recv_exact(Socket *sock, Bytes *buffer, int max_bytes);
+static int recv_exact(Socket *sock, Bytes *dest, size_t max_bytes);
 
 static int sock_cnt = 0;
+
+static void free_sock(Socket *sock) {
+    free(sock->_sockaddr);
+    if (sock->_info_list != NULL) freeaddrinfo(sock->_info_list);
+    free(sock);
+}
 
 void sock_close(Socket *sock) {
     if (sock->sockfd < 0) return;
 
     #ifdef _WIN32
-        closesocket(sock->sockfd);
-        free(sock->_sockaddr);
-        free(sock);
+        if (sock->sockfd != -1) closesocket(sock->sockfd);
+        free_sock(sock);
         sock_cnt--;
         if (sock_cnt == 0) WSACleanup();
     #else
-        close(sock->sockfd);
-        free(sock->_sockaddr);
-        free(sock);
+        if (sock->sockfd != -1) close(sock->sockfd);
+        free_sock(sock);
         sock_cnt--;
     #endif
+
+    if (sock_cnt == 0) {
+        free(SOCK_ERROR.message);
+        SOCK_ERROR.message = NULL;
+    }
 }
 
-Socket *sock_init(const SockInfo sockinfo) {
+Socket *sock_new(const SockInfo sockinfo) {
     #ifdef _WIN32
         if (sock_cnt == 0) {
             WSADATA wsaData;
@@ -116,6 +215,7 @@ Socket *sock_init(const SockInfo sockinfo) {
         return NULL;
     }
     sock->_sockaddr = NULL;
+    sock->_info_list = NULL;
 
     memset(&hints, 0, sizeof(hints)); // Set all bytes in the hints struct to 0
     hints.ai_family = AF_UNSPEC; // Accepts both IPv4 and IPv6
@@ -123,31 +223,72 @@ Socket *sock_init(const SockInfo sockinfo) {
 
     if ((status = getaddrinfo(sockinfo.host, sockinfo.service, &hints, &servinfo)) != 0) {
         SET_SOCK_ERROR(GETADDRINFO, (char *) gai_strerror(status));
+        free_sock(sock);
         return NULL;
     }
 
-    //* Get a socket file-descriptor and bind it
+    //* Get a socket file-descriptor
     for (struct addrinfo *p = servinfo; p != NULL; p = p->ai_next) {
         sock->sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
         if (sock->sockfd < 0) continue;
 
-        if ((status = bind(sock->sockfd, p->ai_addr, p->ai_addrlen)) == -1) sock_close(sock);
-        sock->_sockaddr = (struct sockaddr_storage *) p->ai_addr;
+        sock->_info_list = p;
+        for (struct addrinfo *ptr = servinfo; ptr != NULL; ptr = ptr->ai_next) {
+            if (ptr->ai_next == p) {
+                ptr->ai_next = NULL;
+                freeaddrinfo(servinfo);
+            }
+        }
     }
 
     if (sock->sockfd == -1) {
-        SET_SOCK_ERROR(SOCK_INIT, strcat(CANT_CREATE_SOCKET, strerror(errno)));
-        return NULL;
-    }
-    else if (status == -1) {
-        SET_SOCK_ERROR(SOCK_INIT, strcat(CANT_BIND_SOCKET, strerror(errno)));
+
+        SET_SOCK_ERROR(SOCK_CREATE, strerror(errno));
+        free_sock(sock);
+        freeaddrinfo(servinfo);
         return NULL;
     }
 
     sock_cnt++;
-    freeaddrinfo(servinfo);
-    servinfo = NULL;
     return sock;
+}
+
+int sock_bind(Socket *sock) {
+    int status = 0;
+
+    if ((status = bind(sock->sockfd, sock->_info_list->ai_addr, sock->_info_list->ai_addrlen)) == -1) {
+        close(sock->sockfd);
+
+        //* Get a socket file-descriptor and bind it
+        for (const struct addrinfo *p = sock->_info_list->ai_next; p != NULL; p = p->ai_next) {
+            sock->sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
+            if (sock->sockfd < 0) continue;
+
+            if ((status = bind(sock->sockfd, p->ai_addr, p->ai_addrlen)) == -1) {
+                close(sock->sockfd);
+                continue;
+            }
+            sock->_sockaddr = (struct sockaddr_storage *) p->ai_addr;
+            freeaddrinfo(sock->_info_list);
+        }
+    }
+    else {
+        sock->_sockaddr = (struct sockaddr_storage *) sock->_info_list->ai_addr;
+        freeaddrinfo(sock->_info_list);
+    }
+
+    if (sock->sockfd == -1) {
+        SET_SOCK_ERROR(SOCK_CREATE, strerror(errno));
+        sock_close(sock);
+        return 1;
+    }
+    else if (status == -1) {
+        SET_SOCK_ERROR(SOCK_CREATE, strerror(errno));
+        sock_close(sock);
+        return 1;
+    }
+
+    return 0;
 }
 
 int sock_connect(const Socket *sock) {
@@ -178,6 +319,7 @@ Socket *sock_accept(const Socket *sock) {
     new_sock->_sockaddr = calloc(1, sizeof(struct sockaddr_storage));
     if (new_sock->_sockaddr == NULL) {
         SET_SOCK_ERROR(MEMORY_ALLOCATION, CANT_ALLOCATE_SOCKADDR);
+        free_sock(new_sock);
         return NULL;
     }
 
@@ -185,6 +327,7 @@ Socket *sock_accept(const Socket *sock) {
     new_sock->sockfd = accept(sock->sockfd, (struct sockaddr *) new_sock->_sockaddr, &addr_len);
     if (new_sock->sockfd < 0) {
         SET_SOCK_ERROR(SOCK_ACCEPT, strerror(errno));
+        free_sock(new_sock);
         return NULL;
     }
 
@@ -192,55 +335,104 @@ Socket *sock_accept(const Socket *sock) {
 }
 
 int sock_sendall(const Socket *sock, Bytes *data) {
-    uint32_t buffer_len = htonl(sizeof data.buffer);
+    const uint32_t buffer_len = htonl(sizeof data->data);
 
-    unsigned char *full_buffer = calloc(sizeof buffer_len + sizeof data, 1);
+    unsigned char *full_buffer = calloc(sizeof buffer_len + sizeof data->data, 1);
     memcpy(full_buffer, &buffer_len, sizeof buffer_len);
-    memcpy(full_buffer, data.buffer, sizeof *data.buffer);
+    memcpy(full_buffer, data->data, sizeof *data->data);
 
-    int bytes_left = sizeof full_buffer;
+    ssize_t bytes_left = sizeof full_buffer;
     while (bytes_left > 0) {
-        int bytes_sent = send(sock->sockfd, full_buffer, sizeof bytes_left, 0);
+        const ssize_t bytes_sent = send(sock->sockfd, full_buffer, sizeof bytes_left, 0);
 
         if (bytes_sent < 0) {
             SET_SOCK_ERROR(SOCK_SEND, strerror(errno));
+            free(full_buffer);
+            return 1;
+        }
+
+        if (remove_prefix(data, bytes_sent) == 1) {
+            SET_SOCK_ERROR(SOCK_SEND, CANT_ALLOCATE_MEMORY);
+            free(full_buffer);
             return 1;
         }
 
         bytes_left -= bytes_sent;
     }
+
+    free(full_buffer);
+    return 0;
 }
 
-int recv_exact(Socket *sock, Bytes *buffer, int max_bytes) {
+static int recv_exact(Socket *sock, Bytes *dest, size_t max_bytes) {
+
+
+    return 0;
+}
+
+int sock_recv(Socket *sock, Bytes *dest) {
 
 }
 
 void print_ip(struct sockaddr_storage *addr) {
-    const struct sockaddr_in *ipv4;
-    const struct sockaddr_in6 *ipv6;
-
     if (addr->ss_family == AF_INET) {
-        ipv4 = (struct sockaddr_in *) addr;
+        const struct sockaddr_in *ipv4 = (struct sockaddr_in *) addr;
         char ip[INET_ADDRSTRLEN] = {0};
         printf("%s\n", inet_ntop(AF_INET, &ipv4->sin_addr, ip, INET_ADDRSTRLEN));
     }
     else if (addr->ss_family == AF_INET6) {
-        ipv6 = (struct sockaddr_in6 *) addr;
+        const struct sockaddr_in6 *ipv6 = (struct sockaddr_in6 *) addr;
         char ip[INET6_ADDRSTRLEN] = {0};
         printf("%s\n", inet_ntop(AF_INET6, &ipv6->sin6_addr, ip, INET6_ADDRSTRLEN));
     }
 }
 
-Bytes *bytes(const void *data, const size_t length) {
+Bytes *encode(const void *data, const size_t length) {
+    if (data == NULL) {
+        SET_SOCK_ERROR(ENCODE, ENCODE_NULL);
+        return NULL;
+    }
+
     Bytes *bytes = calloc(1, sizeof(Bytes));
     if (bytes == NULL) {
-    SET_SOCK_ERROR(MEMORY_ALLOCATION, CANT_ALLOCATE_BYTES);
+        SET_SOCK_ERROR(MEMORY_ALLOCATION, CANT_ALLOCATE_BYTES);
         return NULL;
     }
 
     bytes->data = (unsigned char *) data;
     bytes->length = length;
+    return bytes;
+}
 
+int remove_prefix(Bytes *bytes, const size_t prefix_length) {
+    unsigned char *new_data = calloc(1, bytes->length - prefix_length);
+    if (new_data == NULL) {
+        return 1;
+    }
+
+    for (size_t i = 0; i < bytes->length - prefix_length; i++) {
+        new_data[i] = bytes->data[i + prefix_length];
+    }
+
+    free(bytes->data);
+    bytes->data = new_data;
+    return 0;
+}
+
+int remove_suffix(Bytes *bytes, const size_t suffix_length) {
+    unsigned char *new_data = calloc(1, bytes->length - suffix_length);
+    if (new_data == NULL) {
+        return 1;
+    }
+
+    for (size_t i = 0; i < bytes->length - suffix_length; i++) {
+        new_data[i] = bytes->data[i];
+    }
+
+    free(bytes->data);
+    bytes->data = new_data;
+    bytes->length -= suffix_length;
+    return 0;
 }
 
 void free_bytes(Bytes *bytes) {

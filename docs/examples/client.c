@@ -1,9 +1,10 @@
 #include "socket/socket.h"
 #include <stdio.h>
 
+
 int main(int argc , char **argv) {
     if (argc != 3) {
-        printf("Usage: ./server <host> <port>\n");
+        printf("Usage: ./client <host> <port>\n");
         return 1;
     }
 
@@ -13,11 +14,14 @@ int main(int argc , char **argv) {
         .socktype = SOCK_STREAM,
     };
 
-    Socket *listen_sock = sock_init(sockinfo);
-    sock_listen(listen_sock, 1);
+    Socket *sock = sock_new(sockinfo);
+    if (sock == NULL || sock_bind(sock) == 1) {
+        return 1;
+    }
 
-    Socket *client_sock = sock_accept(listen_sock);
-    if (client_sock == NULL) {
+    if (sock_bind(sock) == 1 || sock_connect(sock) == 1) {
+        sock_close(sock);
+        fprintf(stderr, "%s\n", str_sock_error());
         return 1;
     }
 
@@ -26,6 +30,6 @@ int main(int argc , char **argv) {
         // Do stuff :)
     }
 
-    sock_close(listen_sock);
+    sock_close(sock);
     return 0;
 }

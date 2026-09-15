@@ -26,8 +26,8 @@ target_sources(socket
 )
 
 add_executable(test_client
-        docs/code_examples/client.c
-        docs/code_examples/server.c
+        docs/examples/client.c
+        docs/examples/server.c
 )
 
 target_link_libraries(test_client
