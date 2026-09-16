@@ -1,20 +1,13 @@
 #include "socket/socket.h"
 #include <stdio.h>
 
-
 int main(int argc , char **argv) {
     if (argc != 3) {
         printf("Usage: ./client <host> <port>\n");
         return 1;
     }
 
-    const SockInfo sockinfo = {
-        .host = argv[1],
-        .service = argv[2],
-        .socktype = SOCK_STREAM,
-    };
-
-    Socket *sock = sock_new(sockinfo);
+    Socket *sock = sock_new(argv[1], argv[2], SOCK_STREAM);
     if (sock == NULL || sock_bind(sock) == 1) {
         return 1;
     }

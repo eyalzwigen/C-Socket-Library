@@ -41,6 +41,9 @@
 #define ENCODE_NULL "Cannot serialize NULL pointer"
 #define CANT_CONNECT_DGRAM_SOCKET "Cannot \"connect\" a datagram socket"
 #define SOCK_TYPE_NOT_SUPPORTED "This type of socket is not yet supported by this library."
+#define SOCK_CLOSE_ERROR "Couldn't close the socket"
+#define SOCKET_IS_NULL "The pointer provided for the socket is NULL"
+#define SOCKET_FILE_DESCRIPTOR_INVALID "The file-descriptor of the socket is invalid"
 
 static _Thread_local SockError SOCK_ERROR = {};
 
@@ -70,40 +73,31 @@ const static char *mapErrorCodeToMessage(const SockErrCode code) {
     switch (code) {
         case WSA_STARTUP:
             return WSA_STARTUP_FAILED;
-            break;
         case WINSOCK_STARTUP:
             return WINSOCK_ERROR;
-            break;
         case GETADDRINFO:
             return GETADDRINFO_ERR;
-            break;
         case SOCK_CREATE:
             return CANT_CREATE_SOCKET;
-            break;
         case SOCK_BIND:
             return CANT_BIND_SOCKET;
-            break;
         case SOCK_CONN:
             return CANT_CONNECT_SOCKET;
-            break;
         case SOCK_LISTEN:
             return SOCK_LISTEN_ERR;
-            break;
         case SOCK_ACCEPT:
             return SOCK_ACCEPT_ERR;
-            break;
         case SOCK_SEND:
             return SOCK_SEND_ERR;
-            break;
         case SOCK_RECV:
             return SOCK_RECV_ERR;
-            break;
+        case SOCK_CLOSE:
+            return SOCK_CLOSE_ERROR;
         case MEMORY_ALLOCATION:
             return CANT_ALLOCATE_MEMORY;
             break;
         default:
             return UNKNOWN_ERROR;
-            break;
     }
 }
 
@@ -194,8 +188,16 @@ static void free_sock(Socket *sock) {
     free(sock);
 }
 
-void sock_close(Socket *sock) {
-    if (sock->sockfd < 0) return;
+int sock_close(Socket *sock) {
+    if (sock == NULL) {
+        SET_SOCK_ERROR(SOCK_CLOSE, SOCKET_IS_NULL);
+        return 1;
+    }
+
+    if (sock->sockfd < 0) {
+        SET_SOCK_ERROR(SOCK_CLOSE, SOCKET_FILE_DESCRIPTOR_INVALID);
+        return 1;
+    }
 
     #ifdef _WIN32
         if (sock->sockfd != -1) closesocket(sock->sockfd);
@@ -212,6 +214,8 @@ void sock_close(Socket *sock) {
         free(SOCK_ERROR.message);
         SOCK_ERROR.message = NULL;
     }
+
+    return 0;
 }
 
 Socket *sock_new(const char *host, const char *service, const int socktype) {

@@ -7,13 +7,7 @@ int main(int argc , char **argv) {
         return 1;
     }
 
-    const SockInfo sockinfo = {
-        .host = argv[1],
-        .service = argv[2],
-        .socktype = SOCK_STREAM,
-    };
-
-    Socket *listen_sock = sock_new(sockinfo);
+    Socket *listen_sock = sock_new(argv[1], argv[2], SOCK_STREAM);
     if (listen_sock == NULL) {
         fprintf(stderr, "%s\n", str_sock_error());
         return 1;

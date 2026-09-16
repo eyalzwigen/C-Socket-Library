@@ -14,6 +14,7 @@ typedef enum {
     SOCK_ACCEPT,
     SOCK_SEND,
     SOCK_RECV,
+    SOCK_CLOSE,
     MEMORY_ALLOCATION,
     ENCODE
 } SockErrCode;
@@ -64,10 +65,11 @@ Socket *sock_new(const char *host, const char *service, int socktype);
 int sock_bind(Socket *sock);
 
 /**
- * Closes a socket
- * @param sock - the socket to close
+ * Closes a socket and frees all memory.
+ * @param sock - the socket to close. After the call, the sock will be NULL
+ * @returns 0 if no errors, else 1
  */
-static void sock_close(Socket *sock);
+int sock_close(Socket *sock);
 
 /**
  * Connects a stream socket to a designated host and port
