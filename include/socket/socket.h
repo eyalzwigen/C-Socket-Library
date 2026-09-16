@@ -30,26 +30,30 @@ typedef struct {
     size_t length;
 } Bytes;
 
-typedef struct {
-    const char *host;
-    const char *service;
-    int socktype;
-} SockInfo;
-
 typedef struct Socket Socket;
 
 
 /** Sockets **/
 
 /*
-  Enumerates all addrinfo items and creates a
+ * Enumerates all addrinfo items and creates a
  * new socket with the first valid set of values
  *
  * @param sockinfo - Contains the host, port, and type of the socket
  * @return A new 'Socket' struct with the socket's file-descriptor, and all.
  *  - On error, it returns NULL
  */
-Socket *sock_new(SockInfo sockinfo);
+
+/**
+ *  Creates a new socket
+ *
+ * @param host - The host of the socket (for example: 127.0.0.1, 0.0.0.0, 192.0.2.67)
+ * @param service - The service/port of the socket (for example: 8080, http, 443)
+ * @param socktype - The type of the socket you want to create (SOCK_STREAM, SOCK_DGRAM, etc...)
+ * @return  A new 'Socket' struct with the socket's file-descriptor, and all.
+ *  - On error, it returns NULL
+ */
+Socket *sock_new(const char *host, const char *service, int socktype);
 
 /**
  * Binds a socket

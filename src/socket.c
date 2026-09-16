@@ -143,6 +143,8 @@ const char *str_sock_error(void) {
 
 typedef struct Socket {
     int sockfd;
+    const char *host;
+    const char *service;
     int socktype;
     struct sockaddr_storage *_sockaddr; //! Private
     struct addrinfo *_info_list; //! Extra Private!!!!
@@ -187,6 +189,8 @@ static int sock_cnt = 0;
 static void free_sock(Socket *sock) {
     free(sock->_sockaddr);
     if (sock->_info_list != NULL) freeaddrinfo(sock->_info_list);
+    if (sock->host != NULL) free((void *) sock->host);
+    if (sock->service != NULL) free((void *) sock->service);
     free(sock);
 }
 
@@ -210,8 +214,8 @@ void sock_close(Socket *sock) {
     }
 }
 
-Socket *sock_new(const SockInfo sockinfo) {
-    if (!isSupported(sockinfo.socktype)) {
+Socket *sock_new(const char *host, const char *service, const int socktype) {
+    if (!isSupported(socktype)) {
         SET_SOCK_ERROR(SOCK_CREATE, SOCK_TYPE_NOT_SUPPORTED);
         return NULL;
     }
@@ -248,13 +252,29 @@ Socket *sock_new(const SockInfo sockinfo) {
     }
     sock->_sockaddr = NULL;
     sock->_info_list = NULL;
-    sock->socktype = sockinfo.socktype;
+    sock->socktype = socktype;
+
+    char *sock_host = calloc(strlen(host), 1);
+    if (sock_host == NULL) {
+        SET_SOCK_ERROR(MEMORY_ALLOCATION, CANT_ALLOCATE_MEMORY);
+        return NULL;
+    }
+    strcpy(sock_host, host);
+    sock->host = sock_host;
+
+    char *sock_service = calloc(strlen(service), 1);
+    if (sock_service == NULL) {
+        SET_SOCK_ERROR(MEMORY_ALLOCATION, CANT_ALLOCATE_MEMORY);
+        return NULL;
+    }
+    strcpy(sock_service, service);
+    sock->service = sock_service;
 
     memset(&hints, 0, sizeof(hints)); // Set all bytes in the hints struct to 0
     hints.ai_family = AF_UNSPEC; // Accepts both IPv4 and IPv6
-    hints.ai_socktype = sockinfo.socktype; // A TCP Stream socket
+    hints.ai_socktype = socktype; // A TCP Stream socket
 
-    if ((status = getaddrinfo(sockinfo.host, sockinfo.service, &hints, &servinfo)) != 0) {
+    if ((status = getaddrinfo(host, service, &hints, &servinfo)) != 0) {
         SET_SOCK_ERROR(GETADDRINFO, (char *) gai_strerror(status));
         free_sock(sock);
         return NULL;

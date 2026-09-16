@@ -1,12 +1,14 @@
 cmake_minimum_required(VERSION 4.2)
-project(socket C)
+project(socket VERSION 0.1.0 LANGUAGES C)
+
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/include/socket/version.h.in ${CMAKE_CURRENT_SOURCE_DIR}include/socket/version.h)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
 add_library(socket
-        include/socket/socket.h
-        src/socket.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/include/socket/socket.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/socket.c
 )
 
 target_include_directories(socket
