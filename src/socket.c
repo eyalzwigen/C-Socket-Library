@@ -1,65 +1,52 @@
-#include <arpa/inet.h>
 #include <stdlib.h>
-#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
+
 #ifdef _WIN32
     #define WIN32_LEAN_AND_MEAN
+
     #include <winsock2.h>
-    #include <windows.h>
     #include <ws2tcpip.h>
+    #include <windows.h>
+
+    #pragma comment(lib, "Ws2_32.lib")
 #else
+    #include <arpa/inet.h>
+    #include <errno.h>
+    #include <netdb.h>
     #include <sys/socket.h>
     #include <unistd.h>
 #endif
 
-#include <errno.h>
 #include "socket/socket.h"
-#include <netdb.h>
-#include <stdio.h>
-#include <string.h>
 
-#define MAX_FILE_AND_LINE_LENGTH 256
-#define MAX_ERROR_MESSAGE_LENGTH (MAX_FILE_AND_LINE_LENGTH + 1024)
-
-// Error message templates
-#define WSA_STARTUP_FAILED "WSAStartup failed"
-#define WINSOCK_ERROR "An error with the Winsock startup occurred"
-#define WINSOCK_MISSING "Version 2.2 of Winsock not available"
-#define CANT_ALLOCATE_FOR_SOCKET "Could not allocate memory for new socket"
-#define CANT_CREATE_SOCKET "Could not create socket"
-#define CANT_BIND_SOCKET "Could not bind socket"
-#define CANT_ALLOCATE_SOCKADDR "Could not allocate memory for _sockaddr in new socket"
-#define CANT_ALLOCATE_BYTES "Could not allocate memory for a new Bytes variable"
-#define CANT_ALLOCATE_MEMORY "Failed allocating memory"
-#define GETADDRINFO_ERR "An error with getaddrinfo() occurred"
-#define CANT_CONNECT_SOCKET "Could not connect to socket"
-#define SOCK_LISTEN_ERR "An error occurred when tried to listen on socket"
-#define SOCK_ACCEPT_ERR "An error occurred when tried to accept a new socket"
-#define SOCK_SEND_ERR "An error occured when tried to send data to socket"
-#define SOCK_RECV_ERR "An error occurred when tried to receive from socket"
-#define UNKNOWN_ERROR "An unknown error occurred"
-#define ENCODE_ERR "An error with encoding data"
-#define ENCODE_NULL "Cannot serialize NULL pointer"
-#define CANT_CONNECT_DGRAM_SOCKET "Cannot \"connect\" a datagram socket"
-#define SOCK_TYPE_NOT_SUPPORTED "This type of socket is not yet supported by this library."
-#define SOCK_CLOSE_ERROR "Couldn't close the socket"
-#define SOCKET_IS_NULL "The pointer provided for the socket is NULL"
-#define SOCKET_FILE_DESCRIPTOR_INVALID "The file-descriptor of the socket is invalid"
-
+/**
+ * This is a thread-local(one copy per-thread) SockError variable
+ * that tracks the latest errors related to this socket API.
+ * see more details about the SockError struct in socket.h
+ */
 static _Thread_local SockError SOCK_ERROR = {};
 
+/**
+ * This variable tracks the number of sockets
+ * that are open in the current running process.
+ * It's used to determine when to use WSACleanup() or WSAStartup()
+ * and also it frees the latest error message in SOCK_ERROR if the
+ * last socket got closed
+ */
+static int SOCK_CNT = 0;
+
+/**
+ * A macro that is used to update the SOCK_ERROR variable with a new error
+ *
+ * @param error_code - A SockErrorCode variable with the error code
+ * @param error_message - The error message
+ */
 #define SET_SOCK_ERROR(error_code, error_message)                           \
     do {                                                                    \
         SOCK_ERROR.code = (error_code);                                     \
-                                                                            \
-        if (SOCK_ERROR.message != NULL) free(SOCK_ERROR.message);           \
-        char *new_message = calloc(strlen(error_message), sizeof(char));    \
-        if (new_message == NULL) SOCK_ERROR.message = NULL;                 \
-        else {                                                              \
-            strcpy(new_message, error_message);                             \
-            SOCK_ERROR.message = new_message;                               \
-        }                                                                   \
-                                                                            \
-        SOCK_ERROR.file = __FILE__;                                         \
+        strcpy(SOCK_ERROR.message, error_message);                          \
+        strcpy(SOCK_ERROR.file, __FILE__);                                  \
         SOCK_ERROR.line = __LINE__;                                         \
     } while (0)
 
@@ -69,7 +56,7 @@ static _Thread_local SockError SOCK_ERROR = {};
  * @param code - The error code
  * @return a string with the appropriate start of the error message
  */
-const static char *mapErrorCodeToMessage(const SockErrCode code) {
+const static char *mapErrorCodeToMessage(const SockErrorCode code) {
     switch (code) {
         case WSA_STARTUP:
             return WSA_STARTUP_FAILED;
@@ -119,7 +106,13 @@ const static char *turnFileAndLineToMessage(const char *file, const int line) {
 }
 
 SockError sock_error(void) {
-    return SOCK_ERROR;
+    SockError error = {};
+    error.code = SOCK_ERROR.code;
+    error.line = SOCK_ERROR.line;
+    strcpy(error.file, SOCK_ERROR.file);
+    strcpy(error.message, SOCK_ERROR.message);
+
+    return error;
 }
 
 const char *str_sock_error(void) {
@@ -178,7 +171,6 @@ static int isSupported(const int type) {
  */
 static int recv_exact(const Socket *sock, Bytes *dest, size_t max_bytes);
 
-static int sock_cnt = 0;
 
 static void free_sock(Socket *sock) {
     free(sock->_sockaddr);
@@ -201,16 +193,16 @@ int sock_close(Socket *sock) {
 
     #ifdef _WIN32
         if (sock->sockfd != -1) closesocket(sock->sockfd);
-        free_sock(sock);
-        sock_cnt--;
-        if (sock_cnt == 0) WSACleanup();
+        free_sock((void *) sock);
+        SOCK_CNT--;
+        if (SOCK_CNT == 0) WSACleanup();
     #else
         if (sock->sockfd != -1) close(sock->sockfd);
-        free_sock(sock);
-        sock_cnt--;
+        free_sock((void *) sock);
+        SOCK_CNT--;
     #endif
 
-    if (sock_cnt == 0) {
+    if (SOCK_CNT == 0) {
         free(SOCK_ERROR.message);
         SOCK_ERROR.message = NULL;
     }
@@ -225,7 +217,7 @@ Socket *sock_new(const char *host, const char *service, const int socktype) {
     }
 
     #ifdef _WIN32
-        if (sock_cnt == 0) {
+        if (SOCK_CNT == 0) {
             WSADATA wsaData;
 
             if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
@@ -306,7 +298,7 @@ Socket *sock_new(const char *host, const char *service, const int socktype) {
         return NULL;
     }
 
-    sock_cnt++;
+    SOCK_CNT++;
     return sock;
 }
 
@@ -336,14 +328,18 @@ int sock_bind(Socket *sock) {
 
     if (sock->sockfd == -1) {
         SET_SOCK_ERROR(SOCK_CREATE, strerror(errno));
-        sock_close(sock);
+        goto on_error;
         return 1;
     }
     else if (status == -1) {
         SET_SOCK_ERROR(SOCK_CREATE, strerror(errno));
-        sock_close(sock);
+        goto on_error;
         return 1;
     }
+
+    on_error:
+        sock_close(sock);
+        return 1;
 
     return 0;
 }
@@ -381,19 +377,21 @@ Socket *sock_accept(const Socket *sock) {
     new_sock->_sockaddr = calloc(1, sizeof(struct sockaddr_storage));
     if (new_sock->_sockaddr == NULL) {
         SET_SOCK_ERROR(MEMORY_ALLOCATION, CANT_ALLOCATE_SOCKADDR);
-        free_sock(new_sock);
-        return NULL;
+        goto on_error;
     }
 
     socklen_t addr_len = sizeof *new_sock->_sockaddr;
     new_sock->sockfd = accept(sock->sockfd, (struct sockaddr *) new_sock->_sockaddr, &addr_len);
     if (new_sock->sockfd < 0) {
         SET_SOCK_ERROR(SOCK_ACCEPT, strerror(errno));
-        free_sock(new_sock);
-        return NULL;
+        goto on_error;
     }
 
     return new_sock;
+
+    on_error:
+        free_sock(new_sock);
+        return NULL;
 }
 
 int sock_sendall(const Socket *sock, const Bytes *data) {

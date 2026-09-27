@@ -1,7 +1,7 @@
 #include <socket/socket.h>
 #include <stdio.h>
 
-int main(int argc , char **argv) {
+int main(const int argc , char **argv) {
     if (argc != 3) {
         printf("Usage: ./server <host> <port>\n");
         return 1;
@@ -26,7 +26,6 @@ int main(int argc , char **argv) {
         sock_close(listen_sock);
         return 1;
     }
-
 
     while (1) {
         // Do stuff :)

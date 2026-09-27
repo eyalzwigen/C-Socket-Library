@@ -1,0 +1,89 @@
+name: Build & Test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  tests:
+    name: Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libcunit1-dev \
+            pkg-config \
+            valgrind
+
+      - name: Configure
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Debug
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Run CTest
+        run: ctest --test-dir build --output-on-failure
+
+  sanitizers:
+    name: Sanitizers
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libcunit1-dev \
+            pkg-config
+
+      - name: Configure
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DENABLE_SANITIZERS=ON
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Run sanitizer tests
+        run: ctest --test-dir build --output-on-failure
+
+  valgrind:
+    name: Valgrind
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libcunit1-dev \
+            pkg-config \
+            valgrind
+
+      - name: Configure
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DENABLE_VALGRIND=ON
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Run Valgrind tests
+        run: ctest --test-dir build --output-on-failure
+

@@ -3,6 +3,35 @@
 
 #include <netdb.h>
 
+#define MAX_FILE_NAME_LENGTH 128 + 1
+#define MAX_FILE_AND_LINE_LENGTH (MAX_FILE_NAME_LENGTH + 256 + 1)
+#define MAX_ERROR_MESSAGE_LENGTH (MAX_FILE_AND_LINE_LENGTH + 1024 + 1)
+
+// Error message templates
+#define WSA_STARTUP_FAILED "WSAStartup failed"
+#define WINSOCK_ERROR "An error with the Winsock startup occurred"
+#define WINSOCK_MISSING "Version 2.2 of Winsock not available"
+#define CANT_ALLOCATE_FOR_SOCKET "Could not allocate memory for new socket"
+#define CANT_CREATE_SOCKET "Could not create socket"
+#define CANT_BIND_SOCKET "Could not bind socket"
+#define CANT_ALLOCATE_SOCKADDR "Could not allocate memory for _sockaddr in new socket"
+#define CANT_ALLOCATE_BYTES "Could not allocate memory for a new Bytes variable"
+#define CANT_ALLOCATE_MEMORY "Failed allocating memory"
+#define GETADDRINFO_ERR "An error with getaddrinfo() occurred"
+#define CANT_CONNECT_SOCKET "Could not connect to socket"
+#define SOCK_LISTEN_ERR "An error occurred when tried to listen on socket"
+#define SOCK_ACCEPT_ERR "An error occurred when tried to accept a new socket"
+#define SOCK_SEND_ERR "An error occured when tried to send data to socket"
+#define SOCK_RECV_ERR "An error occurred when tried to receive from socket"
+#define UNKNOWN_ERROR "An unknown error occurred"
+#define ENCODE_ERR "An error with encoding data"
+#define ENCODE_NULL "Cannot serialize NULL pointer"
+#define CANT_CONNECT_DGRAM_SOCKET "Cannot \"connect\" a datagram socket"
+#define SOCK_TYPE_NOT_SUPPORTED "This type of socket is not yet supported by this library."
+#define SOCK_CLOSE_ERROR "Couldn't close the socket"
+#define SOCKET_IS_NULL "The pointer provided for the socket is NULL"
+#define SOCKET_FILE_DESCRIPTOR_INVALID "The file-descriptor of the socket is invalid"
+
 typedef enum {
     WSA_STARTUP = 1,
     WINSOCK_STARTUP,
@@ -17,12 +46,12 @@ typedef enum {
     SOCK_CLOSE,
     MEMORY_ALLOCATION,
     ENCODE
-} SockErrCode;
+} SockErrorCode;
 
 typedef struct {
-    SockErrCode code;
-    char *message;
-    char *file;
+    SockErrorCode code;
+    char message[MAX_ERROR_MESSAGE_LENGTH];
+    char file[MAX_FILE_NAME_LENGTH];
     int line;
 } SockError;
 
@@ -187,7 +216,7 @@ void free_bytes(Bytes *bytes);
 /**
  * Get data of the latest error in the form of SockError
  *
- * @return a SockError object with the data of the latest error
+ * @return a SockError struct with the data of the latest error
  */
 SockError sock_error();
 
