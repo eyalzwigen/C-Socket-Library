@@ -130,8 +130,8 @@ const char *str_sock_error(void) {
 
 typedef struct Socket {
     int sockfd;
-    const char *host;
-    const char *service;
+    char *host;
+    char *service;
     int socktype;
     struct sockaddr_storage *_sockaddr; //! Private
     struct addrinfo *_info_list; //! Extra Private!!!!
@@ -173,10 +173,13 @@ static int recv_exact(const Socket *sock, Bytes *dest, size_t max_bytes);
 
 
 static void free_sock(Socket *sock) {
+    if (sock == NULL)
+        return;
+
     free(sock->_sockaddr);
     if (sock->_info_list != NULL) freeaddrinfo(sock->_info_list);
-    if (sock->host != NULL) free((void *) sock->host);
-    if (sock->service != NULL) free((void *) sock->service);
+    if (sock->host != NULL) free(sock->host);
+    if (sock->service != NULL) free(sock->service);
     free(sock);
 }
 
