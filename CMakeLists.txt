@@ -1,7 +1,9 @@
 ﻿cmake_minimum_required(VERSION 3.23)
 
+set(LIB_VERSION "0.0.0" CACHE STRING "Library version")
+
 project(socket
-        VERSION 0.1.0
+        VERSION ${LIB_VERSION}
         LANGUAGES C
 )
 
@@ -84,51 +86,45 @@ endif()
 
 # Tests
 if(BUILD_TESTING)
-    if(WIN32)
-        message(WARNING
-                "Tests are disabled on Windows because this project uses CUnit via pkg-config."
-        )
-    else()
-        find_package(PkgConfig REQUIRED)
+    find_package(PkgConfig REQUIRED)
 
-        pkg_check_modules(CUnit
+    pkg_check_modules(CUnit
+            REQUIRED
+            IMPORTED_TARGET
+            cunit
+    )
+
+    add_executable(test_socket
+            tests/test_socket.c
+    )
+
+    target_link_libraries(test_socket
+            PRIVATE
+            socket
+            PkgConfig::CUnit
+    )
+
+    add_test(
+            NAME socket_tests
+            COMMAND test_socket
+    )
+
+    if(ENABLE_VALGRIND)
+        find_program(VALGRIND_EXECUTABLE
+                NAMES valgrind
                 REQUIRED
-                IMPORTED_TARGET
-                cunit
-        )
-
-        add_executable(test_socket
-                tests/test_socket.c
-        )
-
-        target_link_libraries(test_socket
-                PRIVATE
-                socket
-                PkgConfig::CUnit
         )
 
         add_test(
-                NAME socket_tests
-                COMMAND test_socket
+                NAME socket_tests_valgrind
+                COMMAND
+                ${VALGRIND_EXECUTABLE}
+                --leak-check=full
+                --track-origins=yes
+                --error-exitcode=1
+                --quiet
+                $<TARGET_FILE:test_socket>
         )
-
-        if(ENABLE_VALGRIND)
-            find_program(VALGRIND_EXECUTABLE
-                    NAMES valgrind
-                    REQUIRED
-            )
-
-            add_test(
-                    NAME socket_tests_valgrind
-                    COMMAND
-                    ${VALGRIND_EXECUTABLE}
-                    --leak-check=full
-                    --track-origins=yes
-                    --error-exitcode=1
-                    --quiet
-                    $<TARGET_FILE:test_socket>
-            )
-        endif()
     endif()
 endif()
 

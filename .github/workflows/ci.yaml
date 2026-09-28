@@ -1,4 +1,4 @@
-name: Build & Test
+name: Test
 
 on:
   push:
@@ -6,68 +6,170 @@ on:
 
 jobs:
   tests:
-    name: Tests
-    runs-on: ubuntu-latest
+    name: Run Plain Tests - ${{ matrix.os}}
+    runs-on: ${{ matrix.os}}
+    strategy:
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+          - macos-latest
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
-      - name: Install dependencies
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             libcunit1-dev \
             pkg-config \
-            valgrind
 
-      - name: Configure
+      - name: Install macOS dependencies
+        if: runner.os == 'macOS'
+        run: |
+          brew install cunit pkg-config
+
+      - name: Set up MSYS2
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            git
+            make
+            mingw-w64-ucrt-x86_64-toolchain
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-cunit
+
+      - name: Configure on Unix
+        if: runner.os != 'Windows'
         run: |
           cmake -S . -B build \
             -DCMAKE_BUILD_TYPE=Debug
 
-      - name: Build
+      - name: Configure on Windows
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          cmake -S . -B build \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug
+
+      - name: Build on Unix
+        if: runner.os != 'Windows'
         run: cmake --build build --parallel
 
-      - name: Run CTest
+      - name: Run CTest on Unix
+        if: runner.os != 'Windows'
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Build on Windows
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: cmake --build build --parallel
+
+      - name: Run CTest on Windows
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
         run: ctest --test-dir build --output-on-failure
 
   sanitizers:
-    name: Sanitizers
-    runs-on: ubuntu-latest
+    name: Run Tests with Sanitizers - ${{ matrix.os}}
+    runs-on: ${{ matrix.os}}
+    strategy:
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+          - macos-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install dependencies
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             libcunit1-dev \
-            pkg-config
+            pkg-config \
 
-      - name: Configure
+      - name: Install macOS dependencies
+        if: runner.os == 'macOS'
+        run: |
+          brew install cunit pkg-config
+
+      - name: Set up MSYS2
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            git
+            make
+            mingw-w64-ucrt-x86_64-toolchain
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-cunit
+
+      - name: Configure on Unix
+        if: runner.os != 'Windows'
         run: |
           cmake -S . -B build \
             -DCMAKE_BUILD_TYPE=Debug \
             -DENABLE_SANITIZERS=ON
 
-      - name: Build
+      - name: Configure on Windows
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DENABLE_SANITIZERS=ON
+
+      - name: Build on Unix
+        if: runner.os != 'Windows'
         run: cmake --build build --parallel
 
-      - name: Run sanitizer tests
+      - name: Run tests with sanitizers on Unix
+        if: runner.os != 'Windows'
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Build on Windows
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: cmake --build build --parallel
+
+      - name: Run tests with sanitizers on Windows
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
         run: ctest --test-dir build --output-on-failure
 
   valgrind:
-    name: Valgrind
-    runs-on: ubuntu-latest
+    name: Run Tests with Valgrind - ${{ matrix.os}}
+    runs-on: ${{ matrix.os}}
+    strategy:
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+          - macos-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install dependencies
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -75,15 +177,56 @@ jobs:
             pkg-config \
             valgrind
 
-      - name: Configure
+      - name: Install macOS dependencies
+        if: runner.os == 'macOS'
+        run: |
+          brew install cunit pkg-config valgrind
+
+      - name: Set up MSYS2
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            git
+            make
+            mingw-w64-ucrt-x86_64-toolchain
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-cunit
+
+      - name: Configure on Unix
+        if: runner.os != 'Windows'
         run: |
           cmake -S . -B build \
             -DCMAKE_BUILD_TYPE=Debug \
             -DENABLE_VALGRIND=ON
 
-      - name: Build
+      - name: Configure on Windows
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DENABLE_VALGRIND=ON
+
+
+      - name: Build on Unix
+        if: runner.os != 'Windows'
         run: cmake --build build --parallel
 
-      - name: Run Valgrind tests
+      - name: Run teests with Valgrind on Unix
+        if: runner.os != 'Windows'
         run: ctest --test-dir build --output-on-failure
 
+      - name: Build on Windows
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: cmake --build build --parallel
+
+      - name: Run teests with Valgrind on Unix
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: ctest --test-dir build --output-on-failure

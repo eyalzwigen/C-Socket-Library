@@ -202,11 +202,6 @@ int sock_close(Socket *sock) {
         SOCK_CNT--;
     #endif
 
-    if (SOCK_CNT == 0) {
-        free(SOCK_ERROR.message);
-        SOCK_ERROR.message = NULL;
-    }
-
     return 0;
 }
 

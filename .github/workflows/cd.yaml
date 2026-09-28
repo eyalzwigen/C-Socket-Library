@@ -1,0 +1,131 @@
+name: Build & Publish
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  build:
+    name: Build the Library
+    runs-on: ${{matrix.os}}
+    strategy:
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+          - macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Get version
+        id: version
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libcunit1-dev \
+            pkg-config
+
+      - name: Install macOS dependencies
+        if: runner.os == 'macOS'
+        run: |
+          brew install cunit pkg-config
+
+      - name: Set up MSYS2
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            git
+            make
+            mingw-w64-ucrt-x86_64-toolchain
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-pkgconf
+
+      - name: Configure on Unix
+        if: runner.os != 'Windows'
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_TESTING=OFF \
+            -DLIB_VERSION=${{ steps.version.outputs.version }}
+
+      - name: Configure on Windows
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          cmake -S . -B build \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_TESTING=OFF \
+            -DLIB_VERSION=${{ steps.version.outputs.version }}
+
+      - name: Build on Unix
+        if: runner.os != 'Windows'
+        run: |
+          cmake --build build --parallel
+          cmake --install build --prefix package
+
+      - name: Build on Windows
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          cmake --build build --parallel
+          cmake --install build --prefix package
+
+      - name: Package
+        shell: bash
+        run: |
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            7z a "socket-${{ runner.os }}-${{ runner.arch }}.zip" ./package/*
+          else
+            tar -czf "socket-${{ runner.os }}-${{ runner.arch }}.tar.gz" -C package .
+          fi
+
+      # -------------------------
+      # Upload artifact
+      # -------------------------
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: socket-${{ runner.os }}
+          path: |
+            socket-*.tar.gz
+            socket-*.zip
+
+  release:
+    name: Create a Release
+    needs: build
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: release-files
+          pattern: socket-*
+          merge-multiple: true
+
+      - name: Create Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --title "${{ github.ref_name }}" \
+            --generate-notes \
+            release-files/*
