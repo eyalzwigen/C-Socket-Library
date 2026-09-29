@@ -47,6 +47,7 @@ jobs:
             mingw-w64-ucrt-x86_64-ninja
             mingw-w64-ucrt-x86_64-pkgconf
             mingw-w64-ucrt-x86_64-cunit
+            mingw-w64-ucrt-x86_64-gcc
 
       - name: Configure on Unix
         if: runner.os != 'Windows'
