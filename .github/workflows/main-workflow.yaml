@@ -25,7 +25,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # -------------------------
       # Linux
@@ -67,9 +67,6 @@ jobs:
             mingw-w64-clang-x86_64-pkgconf
             mingw-w64-clang-x86_64-cunit
 
-      # -------------------------
-      # Configure
-      # -------------------------
 
       - name: Configure on Unix
         if: runner.os != 'Windows'
@@ -88,9 +85,6 @@ jobs:
             -DCMAKE_C_COMPILER=clang \
             -DENABLE_SANITIZERS=ON
 
-      # -------------------------
-      # Build
-      # -------------------------
 
       - name: Build on Unix
         if: runner.os != 'Windows'

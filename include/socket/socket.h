@@ -7,9 +7,16 @@ typedef enum {
     SOCKET_STREAM = 1,
 } SocketType;
 
+#define MAX_ERROR_TEXT_LENGTH 1024
+#define ERROR_MESSAGE_FORMAT_OVERHEAD 5
+
 #define MAX_FILE_NAME_LENGTH (128 + 1)
-#define MAX_FILE_AND_LINE_LENGTH (MAX_FILE_NAME_LENGTH + 256 + 1)
-#define MAX_ERROR_MESSAGE_LENGTH (MAX_FILE_AND_LINE_LENGTH + 1024 + 4 + 1)
+
+#define MAX_FILE_AND_LINE_LENGTH \
+    (MAX_FILE_NAME_LENGTH + 256 + 1)
+
+#define MAX_ERROR_MESSAGE_LENGTH \
+    (MAX_FILE_AND_LINE_LENGTH + MAX_ERROR_TEXT_LENGTH + ERROR_MESSAGE_FORMAT_OVERHEAD)
 
 // Error message templates
 #define WSA_STARTUP_FAILED "WSAStartup failed"
@@ -54,7 +61,7 @@ typedef enum {
 
 typedef struct {
     SockErrorCode code;
-    char message[MAX_ERROR_MESSAGE_LENGTH];
+    char message[MAX_ERROR_TEXT_LENGTH];
     char file[MAX_FILE_NAME_LENGTH];
     int line;
 } SockError;
@@ -139,7 +146,7 @@ Socket *sock_accept(const Socket *sock);
  * @param data - The data to send
  * @return 0 if all data was sent, -1 if there were errors, and 1 if the socket closed the connection
  */
-int sock_sendall(const Socket *sock, const Bytes *data);
+int sock_send(const Socket *sock, const Bytes *data);
 
 
 /**

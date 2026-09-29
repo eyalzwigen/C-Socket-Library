@@ -440,7 +440,7 @@ Socket *sock_accept(const Socket *sock) {
         return NULL;
 }
 
-int sock_sendall(const Socket *sock, const Bytes *data) {
+int sock_send(const Socket *sock, const Bytes *data) {
     SockResult code = OK;
 
     const uint32_t buffer_len = htonl(sizeof data->buffer);
@@ -457,7 +457,7 @@ int sock_sendall(const Socket *sock, const Bytes *data) {
     while (full_data.length > 0) {
         ssize_t bytes_sent = 0;
 
-        bytes_sent = send(sock->sockfd, full_data.buffer, full_data.length, 0);
+        bytes_sent = send(sock->sockfd, (const char *) full_data.buffer, full_data.length, 0);
 
         if (bytes_sent < 0) {
             SET_SOCK_ERROR(SOCK_SEND, strerror(errno));
@@ -504,7 +504,7 @@ static int recv_exact(const Socket *sock, Bytes *dest, const size_t max_bytes) {
             break;
         }
 
-        bytes_received = recv(sock->sockfd, buffer, bytes_left, 0);
+        bytes_received = recv(sock->sockfd, (char *) buffer, bytes_left, 0);
 
         // Error with receiving data
         if (bytes_received < 0) {
@@ -577,18 +577,18 @@ int sock_recv(const Socket *sock, Bytes *dest) {
     return code;
 }
 
-void print_ip(struct sockaddr_storage *addr) {
-    if (addr->ss_family == AF_INET) {
-        const struct sockaddr_in *ipv4 = (struct sockaddr_in *) addr;
-        char ip[INET_ADDRSTRLEN] = {0};
-        printf("%s\n", inet_ntop(AF_INET, &ipv4->sin_addr, ip, INET_ADDRSTRLEN));
-    }
-    else if (addr->ss_family == AF_INET6) {
-        const struct sockaddr_in6 *ipv6 = (struct sockaddr_in6 *) addr;
-        char ip[INET6_ADDRSTRLEN] = {0};
-        printf("%s\n", inet_ntop(AF_INET6, &ipv6->sin6_addr, ip, INET6_ADDRSTRLEN));
-    }
-}
+// void print_ip(struct sockaddr_storage *addr) {
+//     if (addr->ss_family == AF_INET) {
+//         const struct sockaddr_in *ipv4 = (struct sockaddr_in *) addr;
+//         char ip[INET_ADDRSTRLEN] = {0};
+//         printf("%s\n", inet_ntop(AF_INET, &ipv4->sin_addr, ip, INET_ADDRSTRLEN));
+//     }
+//     else if (addr->ss_family == AF_INET6) {
+//         const struct sockaddr_in6 *ipv6 = (struct sockaddr_in6 *) addr;
+//         char ip[INET6_ADDRSTRLEN] = {0};
+//         printf("%s\n", inet_ntop(AF_INET6, &ipv6->sin6_addr, ip, INET6_ADDRSTRLEN));
+//     }
+// }
 
 Bytes *encode(const void *data, const size_t length) {
     if (data == NULL) {
