@@ -9,7 +9,7 @@ typedef enum {
 
 #define MAX_FILE_NAME_LENGTH (128 + 1)
 #define MAX_FILE_AND_LINE_LENGTH (MAX_FILE_NAME_LENGTH + 256 + 1)
-#define MAX_ERROR_MESSAGE_LENGTH (MAX_FILE_AND_LINE_LENGTH + 1024 + 1)
+#define MAX_ERROR_MESSAGE_LENGTH (MAX_FILE_AND_LINE_LENGTH + 1024 + 4 + 1)
 
 // Error message templates
 #define WSA_STARTUP_FAILED "WSAStartup failed"

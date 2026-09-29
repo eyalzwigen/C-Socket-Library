@@ -1,3 +1,4 @@
+#include <stdatomic.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -34,7 +35,7 @@ static _Thread_local SockError SOCK_ERROR = {};
  * and also it frees the latest error message in SOCK_ERROR if the
  * last socket got closed
  */
-static int SOCK_CNT = 0;
+static atomic_int SOCK_CNT = 0;
 
 /**
  * A macro that is used to update the SOCK_ERROR variable with a new error
@@ -137,7 +138,7 @@ typedef struct Socket {
 
 typedef enum {
     OK = 0,
-    ERROR = -1,
+    ERR = -1,
     CONN_CLOSED = 1
 
 } SockResult;
@@ -191,6 +192,8 @@ static void free_sock(Socket *sock) {
     free(sock);
 }
 
+static atomic_int NEEDS_CLEANUP = 0;
+
 int sock_close(Socket *sock) {
     if (sock == NULL) {
         SET_SOCK_ERROR(SOCK_CLOSE, SOCKET_IS_NULL);
@@ -198,14 +201,20 @@ int sock_close(Socket *sock) {
     }
 
     #ifdef _WIN32
-        if (sock->sockfd != -1) closesocket(sock->sockfd);
+        if (sock->sockfd != -1) {
+            closesocket(sock->sockfd);
+            atomic_fetch_sub(&SOCK_CNT, 1);
+        }
+
         free_sock(sock);
-        SOCK_CNT--;
-        if (SOCK_CNT == 0) WSACleanup();
+        if (atomic_load(&SOCK_CNT) == 0 && atomic_load(&NEEDS_CLEANUP)) {
+            WSACleanup();
+            atomic_store(&NEEDS_CLEANUP, 0);
+        }
     #else
         if (sock->sockfd != -1) {
             close(sock->sockfd);
-            SOCK_CNT--;
+            atomic_fetch_sub(&SOCK_CNT, 1);
         }
 
         free_sock(sock);
@@ -223,7 +232,7 @@ Socket *sock_new(const char *host, const char *service, const SocketType socktyp
     const int mapped_type = mapType(socktype);
 
     #ifdef _WIN32
-        if (SOCK_CNT == 0) {
+        if (atomic_load(&SOCK_CNT) == 0) {
             WSADATA wsaData;
 
             if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
@@ -239,6 +248,8 @@ Socket *sock_new(const char *host, const char *service, const SocketType socktyp
                     WSACleanup();
                 return NULL;
             }
+
+            atomic_store(&NEEDS_CLEANUP, 1);
         }
     #endif
 
@@ -250,7 +261,7 @@ Socket *sock_new(const char *host, const char *service, const SocketType socktyp
     Socket *sock = calloc(1, sizeof(Socket));
     if (sock == NULL) {
         SET_SOCK_ERROR(MEMORY_ALLOCATION, CANT_ALLOCATE_FOR_SOCKET);
-        return NULL;
+       goto win32_cleanup;
     }
     sock->_sockaddr = NULL;
     sock->_info_list = NULL;
@@ -259,7 +270,7 @@ Socket *sock_new(const char *host, const char *service, const SocketType socktyp
     char *sock_host = calloc(strlen(host) + 1, 1);
     if (sock_host == NULL) {
         SET_SOCK_ERROR(MEMORY_ALLOCATION, CANT_ALLOCATE_MEMORY);
-        return NULL;
+        goto win32_cleanup;
     }
     strcpy(sock_host, host);
     sock->host = sock_host;
@@ -267,7 +278,7 @@ Socket *sock_new(const char *host, const char *service, const SocketType socktyp
     char *sock_service = calloc(strlen(service) + 1, 1);
     if (sock_service == NULL) {
         SET_SOCK_ERROR(MEMORY_ALLOCATION, CANT_ALLOCATE_MEMORY);
-        return NULL;
+        goto win32_cleanup;
     }
     strcpy(sock_service, service);
     sock->service = sock_service;
@@ -279,7 +290,7 @@ Socket *sock_new(const char *host, const char *service, const SocketType socktyp
     if ((status = getaddrinfo(host, service, &hints, &servinfo)) != 0) {
         SET_SOCK_ERROR(GETADDRINFO, (char *) gai_strerror(status));
         free_sock(sock);
-        return NULL;
+        goto win32_cleanup;
     }
 
     //* Get a socket file-descriptor
@@ -301,17 +312,28 @@ Socket *sock_new(const char *host, const char *service, const SocketType socktyp
         SET_SOCK_ERROR(SOCK_CREATE, strerror(errno));
         free_sock(sock);
         freeaddrinfo(servinfo);
-        return NULL;
+        goto win32_cleanup;
     }
 
-    SOCK_CNT++;
+    atomic_fetch_add(&SOCK_CNT, 1);
     return sock;
+
+    win32_cleanup:
+        #ifdef _WIN32
+            if (atomic_load(&SOCK_CNT) == 0) {
+                WSACleanup();
+                atomic_store(&NEEDS_CLEANUP, 0);
+            }
+            return NULL;
+        #else
+            return NULL;
+        #endif
 }
 
 int sock_bind(Socket *sock) {
     if (sock == NULL) {
         SET_SOCK_ERROR(SOCK_BIND, SOCKET_IS_NULL);
-        return ERROR;
+        return ERR;
     }
 
     int status = 0;
@@ -325,7 +347,11 @@ int sock_bind(Socket *sock) {
     }
 
     if ((status = bind(sock->sockfd, sock->_info_list->ai_addr, sock->_info_list->ai_addrlen)) == -1) {
-        close(sock->sockfd);
+        #ifdef _WIN32
+                closesocket(sock->sockfd);
+        #else
+                close(sock->sockfd);
+        #endif
 
         //* Get a socket file-descriptor and bind it
         for (const struct addrinfo *p = sock->_info_list->ai_next; p != NULL; p = p->ai_next) {
@@ -358,7 +384,7 @@ int sock_bind(Socket *sock) {
 
     on_error:
         sock_close(sock);
-        return ERROR;
+        return ERR;
 }
 
 int sock_connect(const Socket *sock) {
@@ -433,7 +459,7 @@ int sock_sendall(const Socket *sock, const Bytes *data) {
         if (bytes_sent < 0) {
             SET_SOCK_ERROR(SOCK_SEND, strerror(errno));
             free_bytes(&full_data);
-            code = ERROR;
+            code = ERR;
             break;
         }
 
@@ -446,7 +472,7 @@ int sock_sendall(const Socket *sock, const Bytes *data) {
         if (remove_prefix(&full_data, bytes_sent) == 1) {
             SET_SOCK_ERROR(SOCK_SEND, CANT_ALLOCATE_MEMORY);
             free(full_buffer);
-            code = ERROR;
+            code = ERR;
             break;
         }
 
@@ -471,7 +497,7 @@ static int recv_exact(const Socket *sock, Bytes *dest, const size_t max_bytes) {
         if (buffer == NULL) {
             SET_SOCK_ERROR(MEMORY_ALLOCATION, CANT_ALLOCATE_MEMORY);
             free(full_buffer);
-            code = ERROR;
+            code = ERR;
             break;
         }
 
@@ -481,7 +507,7 @@ static int recv_exact(const Socket *sock, Bytes *dest, const size_t max_bytes) {
         if (bytes_received < 0) {
             SET_SOCK_ERROR(SOCK_RECV, strerror(errno));
             free(buffer);
-            code = ERROR;
+            code = ERR;
             break;
         }
 
@@ -500,7 +526,7 @@ static int recv_exact(const Socket *sock, Bytes *dest, const size_t max_bytes) {
             SET_SOCK_ERROR(MEMORY_ALLOCATION, CANT_ALLOCATE_MEMORY);
             free(full_buffer);
             free(buffer);
-            code = ERROR;
+            code = ERR;
             break;
         }
         free(buffer);
