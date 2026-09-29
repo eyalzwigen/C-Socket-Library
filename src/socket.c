@@ -144,7 +144,7 @@ typedef enum {
 
 static const int SUPPORTED_SOCKET_TYPES[] = {SOCKET_STREAM};
 
-static enum __socket_type mapType(const SocketType socktype) {
+static int mapType(const SocketType socktype) {
     switch (socktype) {
         case SOCKET_STREAM:
             return SOCK_STREAM;
@@ -220,7 +220,7 @@ Socket *sock_new(const char *host, const char *service, const SocketType socktyp
         return NULL;
     }
 
-    enum __socket_type mapped_type = mapType(socktype);
+    const int mapped_type = mapType(socktype);
 
     #ifdef _WIN32
         if (SOCK_CNT == 0) {
