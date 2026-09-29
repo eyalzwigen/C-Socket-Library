@@ -13,17 +13,23 @@ on:
 
 jobs:
   sanitizers:
-    name: Run Tests with Sanitizers - ${{ matrix.os}}
-    runs-on: ${{ matrix.os}}
+    name: Run Tests with Sanitizers - ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+
     strategy:
       matrix:
         os:
           - ubuntu-latest
+          - windows-latest
           - macos-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      # -------------------------
+      # Linux
+      # -------------------------
 
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
@@ -31,40 +37,50 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             libcunit1-dev \
-            pkg-config \
+            pkg-config
+
+      # -------------------------
+      # macOS
+      # -------------------------
 
       - name: Install macOS dependencies
         if: runner.os == 'macOS'
         run: |
           brew install cunit pkg-config
 
+      # -------------------------
+      # Windows / MSYS2 CLANG64
+      # -------------------------
 
-      - name: Configure
+      - name: Set up MSYS2
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: CLANG64
+          update: true
+          install: >-
+            git
+            make
+            mingw-w64-clang-x86_64-toolchain
+            mingw-w64-clang-x86_64-cmake
+            mingw-w64-clang-x86_64-ninja
+            mingw-w64-clang-x86_64-pkgconf
+            mingw-w64-clang-x86_64-cunit
+
+      # -------------------------
+      # Configure
+      # -------------------------
+
+      - name: Configure on Unix
+        if: runner.os != 'Windows'
         run: |
           cmake -S . -B build \
             -DCMAKE_BUILD_TYPE=Debug \
             -DENABLE_SANITIZERS=ON
 
-
-      - name: Build
-        run: cmake --build build --parallel
-
-      - name: Run tests with sanitizers
-        run: ctest --test-dir build --output-on-failure
-
-  windows-sanitizers:
-    name: Run Windows Tests with AddressSanitizer
-    runs-on: windows-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Install LLVM
-        run: choco install llvm -y --no-progress
-
-      - name: Configure
-        shell: bash
+      - name: Configure on Windows
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
         run: |
           cmake -S . -B build \
             -G Ninja \
@@ -72,11 +88,35 @@ jobs:
             -DCMAKE_C_COMPILER=clang \
             -DENABLE_SANITIZERS=ON
 
-      - name: Build
-        run: cmake --build build --parallel
+      # -------------------------
+      # Build
+      # -------------------------
 
-      - name: Run tests
-        run: ctest --test-dir build --output-on-failure
+      - name: Build on Unix
+        if: runner.os != 'Windows'
+        run: |
+          cmake --build build --parallel
+
+      - name: Build on Windows
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          cmake --build build --parallel
+
+      # -------------------------
+      # Test
+      # -------------------------
+
+      - name: Run tests with sanitizers on Unix
+        if: runner.os != 'Windows'
+        run: |
+          ctest --test-dir build --output-on-failure
+
+      - name: Run tests with sanitizers on Windows
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          ctest --test-dir build --output-on-failure
 
   valgrind:
     name: Run Tests with Valgrind
