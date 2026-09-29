@@ -16,36 +16,31 @@ typedef struct node {
 
 static node *HEAD = NULL;
 
-static void add_node(node *head, void *value, const int type) {
+static int add_node(node *head, void *value, const int type) {
     if (head == NULL) {
-        return;
+        fprintf(stderr, "The head is NULL");
+        return 1;
     }
 
-    if (head->value == NULL) {
-        head->value = value;
-        head->type = type;
-        return;
-    }
-
-    node *new_node = calloc(sizeof(node), 1);
+    node *new_node = calloc(1, sizeof(node));
     if (new_node == NULL) {
         fprintf(stderr, "Can't allocate memory :(");
-        return;
+        return 1;
     }
     new_node->value = value;
     new_node->type = type;
 
-    for (node *p = head; p != NULL; p = p->next) {
-        if (p->next == NULL) {
-            p->next = new_node;
-            return;
-        }
+    node *p = head;
+    while (p->next != NULL) {
+        p = p->next;
     }
 
+    p->next = new_node;
+    return 0;
 }
 
 static int init_suite(void) {
-    HEAD = calloc(sizeof(node), 1);
+    HEAD = calloc(1, sizeof(node));
     if (HEAD == NULL) {
         fprintf(stderr, "Can't allocate memory :(");
         return 1;
@@ -59,17 +54,19 @@ static int clean_suite(void) {
 }
 
 static int clean_nodes() {
-    node *p = HEAD;
+    node *p = HEAD->next;
 
     while (p != NULL) {
         node *next = p->next;
 
         switch (p->type) {
             case TYPE_SOCK:
-                sock_close((Socket *) p->value);
+                if (p->value != NULL)
+                    sock_close((Socket *) p->value);
                 break;
             case TYPE_BYTES:
-                free_bytes((Bytes *) p->value);
+                if (p->value != NULL)
+                    free_bytes((Bytes *) p->value);
                 break;
 
             default:
@@ -80,9 +77,19 @@ static int clean_nodes() {
         p = next;
     }
 
+    HEAD->next = NULL;
     return 0;
 }
 
+
+// static void print_nodes() {
+//     node *p = HEAD->next;
+//     while (p != NULL) {
+//         printf("Node type: %d\n", p->type);
+//         printf("Address: %p\n", p->value);
+//         p = p->next;
+//     }
+// }
 
 static void test_sock_new() {
     // Create a valid socket
@@ -120,6 +127,8 @@ static void test_sock_bind(void) {
 
     // Bind the socket
     CU_ASSERT(sock_bind(sock) == 0);
+
+    clean_nodes();
 }
 
 static void test_sock_connect(void) {
@@ -157,6 +166,8 @@ int main() {
         return CU_get_error();
     }
 
+    unsigned int failures = 0;
+
     // Add Tests
     if (CU_add_test(pSuite, "Test Creating a New Socket", test_sock_new) == NULL) goto cleanup;
     if (CU_add_test(pSuite, "Test Binding a Socket", test_sock_bind) == NULL) goto cleanup;
@@ -169,8 +180,12 @@ int main() {
 
     // Run Tests
     CU_basic_run_tests();
+    failures = CU_get_number_of_failures();
+
+    CU_cleanup_registry();
+    return failures == 0 ? 0 : 1;
 
     cleanup:
         CU_cleanup_registry();
-        return CU_get_error();
+        return 1;
 }

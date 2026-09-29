@@ -79,7 +79,7 @@ if(ENABLE_SANITIZERS)
     )
 
     target_link_options(socket
-            PRIVATE
+            PUBLIC
             -fsanitize=address,undefined
     )
 endif()

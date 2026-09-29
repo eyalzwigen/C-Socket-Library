@@ -121,10 +121,8 @@ const char *str_sock_error(void) {
 
     static _Thread_local char full_message[MAX_ERROR_MESSAGE_LENGTH];
 
-    snprintf(full_message, sizeof(full_message), "%s %s.\n %s", start, fileAndLine, SOCK_ERROR.message);
+    snprintf(full_message, sizeof(full_message), "%s %s.\n %s", start ? start : "", fileAndLine ? fileAndLine : "", SOCK_ERROR.message);
 
-    free((void *) start);
-    free((void *) fileAndLine);
     return full_message;
 }
 
@@ -176,7 +174,7 @@ static void free_sock(Socket *sock) {
     if (sock == NULL)
         return;
 
-    free(sock->_sockaddr);
+    if (sock->_sockaddr != NULL) free(sock->_sockaddr);
     if (sock->_info_list != NULL) freeaddrinfo(sock->_info_list);
     if (sock->host != NULL) free(sock->host);
     if (sock->service != NULL) free(sock->service);
@@ -189,20 +187,18 @@ int sock_close(Socket *sock) {
         return 1;
     }
 
-    if (sock->sockfd < 0) {
-        SET_SOCK_ERROR(SOCK_CLOSE, SOCKET_FILE_DESCRIPTOR_INVALID);
-        return 1;
-    }
-
     #ifdef _WIN32
         if (sock->sockfd != -1) closesocket(sock->sockfd);
-        free_sock((void *) sock);
+        free_sock(sock);
         SOCK_CNT--;
         if (SOCK_CNT == 0) WSACleanup();
     #else
-        if (sock->sockfd != -1) close(sock->sockfd);
-        free_sock((void *) sock);
-        SOCK_CNT--;
+        if (sock->sockfd != -1) {
+            close(sock->sockfd);
+            SOCK_CNT--;
+        }
+
+        free_sock(sock);
     #endif
 
     return 0;
@@ -248,7 +244,7 @@ Socket *sock_new(const char *host, const char *service, const int socktype) {
     sock->_info_list = NULL;
     sock->socktype = socktype;
 
-    char *sock_host = calloc(strlen(host), 1);
+    char *sock_host = calloc(strlen(host) + 1, 1);
     if (sock_host == NULL) {
         SET_SOCK_ERROR(MEMORY_ALLOCATION, CANT_ALLOCATE_MEMORY);
         return NULL;
@@ -256,7 +252,7 @@ Socket *sock_new(const char *host, const char *service, const int socktype) {
     strcpy(sock_host, host);
     sock->host = sock_host;
 
-    char *sock_service = calloc(strlen(service), 1);
+    char *sock_service = calloc(strlen(service) + 1, 1);
     if (sock_service == NULL) {
         SET_SOCK_ERROR(MEMORY_ALLOCATION, CANT_ALLOCATE_MEMORY);
         return NULL;
@@ -301,7 +297,20 @@ Socket *sock_new(const char *host, const char *service, const int socktype) {
 }
 
 int sock_bind(Socket *sock) {
+    if (sock == NULL) {
+        SET_SOCK_ERROR(SOCK_BIND, SOCKET_IS_NULL);
+        return ERROR;
+    }
+
     int status = 0;
+
+    if (sock->_sockaddr == NULL) {
+        sock->_sockaddr = calloc(1, sizeof(struct sockaddr_storage));
+        if (sock->_sockaddr == NULL) {
+            SET_SOCK_ERROR(MEMORY_ALLOCATION, CANT_ALLOCATE_MEMORY);
+            goto on_error;
+        }
+    }
 
     if ((status = bind(sock->sockfd, sock->_info_list->ai_addr, sock->_info_list->ai_addrlen)) == -1) {
         close(sock->sockfd);
@@ -311,35 +320,33 @@ int sock_bind(Socket *sock) {
             sock->sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
             if (sock->sockfd < 0) continue;
 
-            if ((status = bind(sock->sockfd, p->ai_addr, p->ai_addrlen)) == -1) {
+            if ((status = bind(sock->sockfd, p->ai_addr, p->ai_addrlen)) == -1)
                 close(sock->sockfd);
-                continue;
+
+            else {
+                memcpy(sock->_sockaddr, (struct sockaddr_storage *) p->ai_addr, p->ai_addrlen);
+                break;
             }
-            sock->_sockaddr = (struct sockaddr_storage *) p->ai_addr;
-            freeaddrinfo(sock->_info_list);
         }
     }
     else {
-        sock->_sockaddr = (struct sockaddr_storage *) sock->_info_list->ai_addr;
-        freeaddrinfo(sock->_info_list);
+        memcpy(sock->_sockaddr, (struct sockaddr_storage *) sock->_info_list->ai_addr, sock->_info_list->ai_addrlen);
     }
 
     if (sock->sockfd == -1) {
         SET_SOCK_ERROR(SOCK_CREATE, strerror(errno));
         goto on_error;
-        return 1;
     }
     else if (status == -1) {
         SET_SOCK_ERROR(SOCK_CREATE, strerror(errno));
         goto on_error;
-        return 1;
     }
+
+    return OK;
 
     on_error:
         sock_close(sock);
-        return 1;
-
-    return 0;
+        return ERROR;
 }
 
 int sock_connect(const Socket *sock) {
