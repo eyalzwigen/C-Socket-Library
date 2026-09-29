@@ -142,7 +142,17 @@ typedef enum {
 
 } SockResult;
 
-static const int SUPPORTED_SOCKET_TYPES[] = {SOCK_STREAM};
+static const int SUPPORTED_SOCKET_TYPES[] = {SOCKET_STREAM};
+
+static enum __socket_type mapType(const SocketType socktype) {
+    switch (socktype) {
+        case SOCKET_STREAM:
+            return SOCK_STREAM;
+
+        default:
+            return -1;
+    }
+}
 
 /**
  * Checks whether a socket type is compatible with the library
@@ -204,11 +214,13 @@ int sock_close(Socket *sock) {
     return 0;
 }
 
-Socket *sock_new(const char *host, const char *service, const int socktype) {
+Socket *sock_new(const char *host, const char *service, const SocketType socktype) {
     if (!isSupported(socktype)) {
         SET_SOCK_ERROR(SOCK_CREATE, SOCK_TYPE_NOT_SUPPORTED);
         return NULL;
     }
+
+    enum __socket_type mapped_type = mapType(socktype);
 
     #ifdef _WIN32
         if (SOCK_CNT == 0) {
@@ -242,7 +254,7 @@ Socket *sock_new(const char *host, const char *service, const int socktype) {
     }
     sock->_sockaddr = NULL;
     sock->_info_list = NULL;
-    sock->socktype = socktype;
+    sock->socktype = mapped_type;
 
     char *sock_host = calloc(strlen(host) + 1, 1);
     if (sock_host == NULL) {
@@ -262,7 +274,7 @@ Socket *sock_new(const char *host, const char *service, const int socktype) {
 
     memset(&hints, 0, sizeof(hints)); // Set all bytes in the hints struct to 0
     hints.ai_family = AF_UNSPEC; // Accepts both IPv4 and IPv6
-    hints.ai_socktype = socktype; // A TCP Stream socket
+    hints.ai_socktype = mapped_type;
 
     if ((status = getaddrinfo(host, service, &hints, &servinfo)) != 0) {
         SET_SOCK_ERROR(GETADDRINFO, (char *) gai_strerror(status));

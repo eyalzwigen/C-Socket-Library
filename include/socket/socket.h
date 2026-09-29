@@ -1,6 +1,12 @@
 #ifndef SOCKET_TYPES_H
 #define SOCKET_TYPES_H
 
+#include <stdint.h>
+
+typedef enum {
+    SOCKET_STREAM = 1,
+} SocketType;
+
 #define MAX_FILE_NAME_LENGTH (128 + 1)
 #define MAX_FILE_AND_LINE_LENGTH (MAX_FILE_NAME_LENGTH + 256 + 1)
 #define MAX_ERROR_MESSAGE_LENGTH (MAX_FILE_AND_LINE_LENGTH + 1024 + 1)
@@ -81,7 +87,7 @@ typedef struct Socket Socket;
  * @return  A new 'Socket' struct with the socket's file-descriptor, and all.
  *  - On error, it returns NULL
  */
-Socket *sock_new(const char *host, const char *service, int socktype);
+Socket *sock_new(const char *host, const char *service, SocketType socktype);
 
 /**
  * Binds a socket
@@ -125,13 +131,6 @@ Socket *sock_accept(const Socket *sock);
 //-------------------------------------------------------------------
 
 /** IO **/
-
-/**
- * Prints an IP Address
- *
- * @param addr - The address to print
- */
-void print_ip(struct sockaddr_storage *addr);
 
 /**
  * Sends a message

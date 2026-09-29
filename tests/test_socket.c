@@ -93,25 +93,25 @@ static int clean_nodes() {
 
 static void test_sock_new() {
     // Create a valid socket
-    Socket *valid_sock = sock_new("127.0.0.1", "8080", SOCK_STREAM);
+    Socket *valid_sock = sock_new("127.0.0.1", "8080", SOCKET_STREAM);
     add_node(HEAD, valid_sock, TYPE_SOCK);
     CU_ASSERT(valid_sock != NULL);
 
     // Create a socket with valid host & service but an unsupported type
-    Socket *invalid_type = sock_new("127.0.0.1", "8080", SOCK_DGRAM);
+    Socket *invalid_type = sock_new("127.0.0.1", "8080", 2);
     add_node(HEAD, invalid_type, TYPE_SOCK);
     CU_ASSERT(invalid_type == NULL);
     CU_ASSERT(sock_error().code == SOCK_CREATE);
     CU_ASSERT(strcmp(sock_error().message, SOCK_TYPE_NOT_SUPPORTED) == 0);
 
     // Create a socket with valid type & service but invalid host
-    Socket *invalid_host = sock_new("Invalid Host", "8080", SOCK_STREAM);
+    Socket *invalid_host = sock_new("Invalid Host", "8080", SOCKET_STREAM);
     add_node(HEAD, invalid_host, TYPE_SOCK);
     CU_ASSERT(invalid_host == NULL);
     CU_ASSERT(sock_error().code == GETADDRINFO);
 
     //Create a socket with valid type & host but invalid service
-    Socket *invalid_service = sock_new("127.0.0.1", "Invalid Service", SOCK_STREAM);
+    Socket *invalid_service = sock_new("127.0.0.1", "Invalid Service", SOCKET_STREAM);
     add_node(HEAD, invalid_service, TYPE_SOCK);
     CU_ASSERT(invalid_service == NULL);
     CU_ASSERT(sock_error().code == GETADDRINFO);
@@ -121,7 +121,7 @@ static void test_sock_new() {
 
 static void test_sock_bind(void) {
     // Create a valid socket
-    Socket *sock = sock_new("127.0.0.1", "8080", SOCK_STREAM);
+    Socket *sock = sock_new("127.0.0.1", "8080", SOCKET_STREAM);
     add_node(HEAD, sock, TYPE_SOCK);
     CU_ASSERT(sock != NULL);
 
