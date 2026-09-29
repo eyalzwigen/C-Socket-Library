@@ -244,8 +244,7 @@ Socket *sock_new(const char *host, const char *service, const SocketType socktyp
                 HIBYTE(wsaData.wVersion) != 2)
             {
                 SET_SOCK_ERROR(WINSOCK_STARTUP, WINSOCK_MISSING);
-                if ()
-                    WSACleanup();
+                WSACleanup();
                 return NULL;
             }
 
@@ -359,7 +358,11 @@ int sock_bind(Socket *sock) {
             if (sock->sockfd < 0) continue;
 
             if ((status = bind(sock->sockfd, p->ai_addr, p->ai_addrlen)) == -1)
-                close(sock->sockfd);
+                #ifdef _WIN32
+                    closesocket(sock->sockfd);
+                #else
+                    close(sock->sockfd);
+                #endif
 
             else {
                 memcpy(sock->_sockaddr, (struct sockaddr_storage *) p->ai_addr, p->ai_addrlen);
