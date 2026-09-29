@@ -1,6 +1,7 @@
 # Clion project files
 .idea/
 cmake-build-*/
+build/
 
 # Cmake generated files
 CMakeCache.txt
