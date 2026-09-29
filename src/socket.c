@@ -244,7 +244,7 @@ Socket *sock_new(const char *host, const char *service, const SocketType socktyp
                 HIBYTE(wsaData.wVersion) != 2)
             {
                 SET_SOCK_ERROR(WINSOCK_STARTUP, WINSOCK_MISSING);
-                WSACleanup();
+                 WSACleanup();
                 return NULL;
             }
 
