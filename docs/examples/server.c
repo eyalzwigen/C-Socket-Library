@@ -22,7 +22,6 @@ int main(const int argc , char **argv) {
     Socket *client_sock = sock_accept(listen_sock);
     if (client_sock == NULL) {
         fprintf(stderr, "%s\n", str_sock_error());
-        sock_close(client_sock);
         sock_close(listen_sock);
         return 1;
     }

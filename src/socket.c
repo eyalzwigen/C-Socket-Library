@@ -23,8 +23,8 @@
 
 /**
  * This is a thread-local(one copy per-thread) SockError variable
- * that tracks the latest errors related to this CSocket API.
- * see more details about the SockError struct in CSocket.h
+ * that tracks the latest errors related to this socket API.
+ * see more details about the SockError struct in socket.h
  */
 static _Thread_local SockError SOCK_ERROR = {};
 
@@ -33,7 +33,7 @@ static _Thread_local SockError SOCK_ERROR = {};
  * that are open in the current running process.
  * It's used to determine when to use WSACleanup() or WSAStartup()
  * and also it frees the latest error message in SOCK_ERROR if the
- * last CSocket got closed
+ * last socket got closed
  */
 static atomic_int SOCK_CNT = 0;
 
@@ -292,7 +292,7 @@ Socket *sock_new(const char *host, const char *service, const SocketType socktyp
         goto win32_cleanup;
     }
 
-    //* Get a CSocket file-descriptor
+    //* Get a socket file-descriptor
     for (struct addrinfo *p = servinfo; p != NULL; p = p->ai_next) {
         sock->sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
         if (sock->sockfd < 0) continue;

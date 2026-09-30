@@ -154,7 +154,7 @@ int sock_send(const Socket *sock, const Bytes *data);
  *
  * @param sock - The soket to receive from
  * @param dest - The destination Bytes object to put the data in
- * @return 0 if all data received, -1 if there was an error, and 1 if the CSocket closed the connection
+ * @return 0 if all data received, -1 if there was an error, and 1 if the socket closed the connection
  */
 int sock_recv(const Socket *sock, Bytes *dest);
 
