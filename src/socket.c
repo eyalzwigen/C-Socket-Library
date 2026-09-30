@@ -19,7 +19,7 @@
     #include <unistd.h>
 #endif
 
-#include "socket/socket.h"
+#include "CSocket/socket.h"
 
 /**
  * This is a thread-local(one copy per-thread) SockError variable
