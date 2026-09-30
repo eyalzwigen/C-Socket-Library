@@ -23,8 +23,8 @@
 
 /**
  * This is a thread-local(one copy per-thread) SockError variable
- * that tracks the latest errors related to this socket API.
- * see more details about the SockError struct in socket.h
+ * that tracks the latest errors related to this CSocket API.
+ * see more details about the SockError struct in CSocket.h
  */
 static _Thread_local SockError SOCK_ERROR = {};
 
@@ -33,7 +33,7 @@ static _Thread_local SockError SOCK_ERROR = {};
  * that are open in the current running process.
  * It's used to determine when to use WSACleanup() or WSAStartup()
  * and also it frees the latest error message in SOCK_ERROR if the
- * last socket got closed
+ * last CSocket got closed
  */
 static atomic_int SOCK_CNT = 0;
 
@@ -156,9 +156,9 @@ static int mapType(const SocketType socktype) {
 }
 
 /**
- * Checks whether a socket type is compatible with the library
+ * Checks whether a CSocket type is compatible with the library
  *
- * @param type - The type of the socket
+ * @param type - The type of the CSocket
  * @return 1 if yes, 0 if not
  */
 static int isSupported(const int type) {
@@ -171,9 +171,9 @@ static int isSupported(const int type) {
 }
 
 /**
- * Receives an exact amount of bytes from a socket
+ * Receives an exact amount of bytes from a CSocket
  *
- * @param sock - A pointer to the socket to receive from
+ * @param sock - A pointer to the CSocket to receive from
  * @param dest - A pointer to the Bytes variable to put the data in
  * @param max_bytes - Maximum number of bytes to receive
  * @return 0 if no errors, else 1
@@ -292,7 +292,7 @@ Socket *sock_new(const char *host, const char *service, const SocketType socktyp
         goto win32_cleanup;
     }
 
-    //* Get a socket file-descriptor
+    //* Get a CSocket file-descriptor
     for (struct addrinfo *p = servinfo; p != NULL; p = p->ai_next) {
         sock->sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
         if (sock->sockfd < 0) continue;
@@ -352,7 +352,7 @@ int sock_bind(Socket *sock) {
                 close(sock->sockfd);
         #endif
 
-        //* Get a socket file-descriptor and bind it
+        //* Get a CSocket file-descriptor and bind it
         for (const struct addrinfo *p = sock->_info_list->ai_next; p != NULL; p = p->ai_next) {
             sock->sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
             if (sock->sockfd < 0) continue;
@@ -513,7 +513,7 @@ static int recv_exact(const Socket *sock, Bytes *dest, const size_t max_bytes) {
             break;
         }
 
-        // The socket closed connection
+        // The CSocket closed connection
         if (bytes_received == 0) {
             free(buffer);
             return code = CONN_CLOSED;

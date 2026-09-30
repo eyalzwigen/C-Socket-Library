@@ -2,7 +2,7 @@
 
 set(LIB_VERSION "0.0.0" CACHE STRING "Library version")
 
-project(socket
+project(CSocket
         VERSION ${LIB_VERSION}
         LANGUAGES C
 )
@@ -28,16 +28,16 @@ option(ENABLE_VALGRIND
 )
 
 configure_file(
-        ${CMAKE_CURRENT_SOURCE_DIR}/include/socket/version.h.in
-        ${CMAKE_CURRENT_BINARY_DIR}/generated/socket/version.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/include/CSocket/version.h.in
+        ${CMAKE_CURRENT_BINARY_DIR}/generated/CSocket/version.h
         @ONLY
 )
 
-add_library(socket
+add_library(CSocket
         src/socket.c
 )
 
-target_include_directories(socket
+target_include_directories(CSocket
         PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/generated>
@@ -46,7 +46,7 @@ target_include_directories(socket
         ${CMAKE_CURRENT_SOURCE_DIR}/src/internal
 )
 
-target_sources(socket
+target_sources(CSocket
         PUBLIC
         FILE_SET public_headers
         TYPE HEADERS
@@ -54,13 +54,13 @@ target_sources(socket
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${CMAKE_CURRENT_BINARY_DIR}/generated
         FILES
-        ${CMAKE_CURRENT_SOURCE_DIR}/include/socket/socket.h
-        ${CMAKE_CURRENT_BINARY_DIR}/generated/socket/version.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/include/CSocket/socket.h
+        ${CMAKE_CURRENT_BINARY_DIR}/generated/CSocket/version.h
 )
 
 # Windows networking library
 if(WIN32)
-    target_link_libraries(socket PUBLIC ws2_32)
+    target_link_libraries(CSocket PUBLIC ws2_32)
 endif()
 
 # Sanitizers
@@ -71,14 +71,14 @@ if(ENABLE_SANITIZERS)
         )
     endif()
 
-    target_compile_options(socket
+    target_compile_options(CSocket
             PRIVATE
             -fsanitize=address,undefined
             -fno-omit-frame-pointer
             -g
     )
 
-    target_link_options(socket
+    target_link_options(CSocket
             PUBLIC
             -fsanitize=address,undefined
     )
@@ -100,7 +100,7 @@ if(BUILD_TESTING)
 
     target_link_libraries(test_socket
             PRIVATE
-            socket
+            CSocket
             PkgConfig::CUnit
     )
 
@@ -130,7 +130,7 @@ endif()
 
 # Installation
 install(
-        TARGETS socket
+        TARGETS CSocket
         EXPORT socketTargets
         ARCHIVE DESTINATION lib
         LIBRARY DESTINATION lib
@@ -142,6 +142,6 @@ install(
 install(
         EXPORT socketTargets
         FILE socketTargets.cmake
-        NAMESPACE socket::
-        DESTINATION lib/cmake/socket
+        NAMESPACE CSocket::
+        DESTINATION lib/cmake/CSocket
 )
