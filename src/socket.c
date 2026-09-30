@@ -461,7 +461,7 @@ int sock_send(const Socket *sock, const Bytes *data) {
 
         if (bytes_sent < 0) {
             SET_SOCK_ERROR(SOCK_SEND, strerror(errno));
-            free_bytes(&full_data);
+            free(full_buffer);
             code = ERR;
             break;
         }
@@ -474,7 +474,6 @@ int sock_send(const Socket *sock, const Bytes *data) {
 
         if (remove_prefix(&full_data, bytes_sent) == 1) {
             SET_SOCK_ERROR(SOCK_SEND, CANT_ALLOCATE_MEMORY);
-            free(full_buffer);
             code = ERR;
             break;
         }
@@ -652,7 +651,8 @@ int bytes_to_int(const Bytes *bytes) {
 }
 
 void free_bytes(Bytes *bytes) {
-    free(bytes->buffer);
+    if (bytes == NULL) return;
+    if (bytes != NULL) free(bytes->buffer);
     bytes->buffer = NULL;
     free(bytes);
 }
