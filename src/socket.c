@@ -156,9 +156,9 @@ static int mapType(const SocketType socktype) {
 }
 
 /**
- * Checks whether a CSocket type is compatible with the library
+ * Checks whether a socket type is compatible with the library
  *
- * @param type - The type of the CSocket
+ * @param type - The type of the socket
  * @return 1 if yes, 0 if not
  */
 static int isSupported(const int type) {
@@ -171,9 +171,9 @@ static int isSupported(const int type) {
 }
 
 /**
- * Receives an exact amount of bytes from a CSocket
+ * Receives an exact amount of bytes from a socket
  *
- * @param sock - A pointer to the CSocket to receive from
+ * @param sock - A pointer to the socket to receive from
  * @param dest - A pointer to the Bytes variable to put the data in
  * @param max_bytes - Maximum number of bytes to receive
  * @return 0 if no errors, else 1
@@ -352,7 +352,7 @@ int sock_bind(Socket *sock) {
                 close(sock->sockfd);
         #endif
 
-        //* Get a CSocket file-descriptor and bind it
+        //* Get a socket file-descriptor and bind it
         for (const struct addrinfo *p = sock->_info_list->ai_next; p != NULL; p = p->ai_next) {
             sock->sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
             if (sock->sockfd < 0) continue;
@@ -513,7 +513,7 @@ static int recv_exact(const Socket *sock, Bytes *dest, const size_t max_bytes) {
             break;
         }
 
-        // The CSocket closed connection
+        // The socket closed connection
         if (bytes_received == 0) {
             free(buffer);
             return code = CONN_CLOSED;

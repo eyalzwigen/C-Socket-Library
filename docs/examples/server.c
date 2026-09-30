@@ -7,7 +7,7 @@ int main(const int argc , char **argv) {
         return 1;
     }
 
-    Socket *listen_sock = sock_new(argv[1], argv[2], SOCK_STREAM);
+    Socket *listen_sock = sock_new(argv[1], argv[2], SOCKET_STREAM);
     if (listen_sock == NULL) {
         fprintf(stderr, "%s\n", str_sock_error());
         return 1;
